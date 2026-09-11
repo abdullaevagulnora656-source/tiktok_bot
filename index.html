@@ -1,0 +1,1668 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title id="site-title">Journal</title>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyComPhUFK1cJJ9bfsen6hES-mv0kGv3ikI",
+        authDomain: "meningsavollarim.firebaseapp.com",
+        databaseURL: "https://meningsavollarim-default-rtdb.firebaseio.com",
+        projectId: "meningsavollarim",
+        storageBucket: "meningsavollarim.firebasestorage.app",
+        messagingSenderId: "378631454654",
+        appId: "1:378631454654:web:133eea4a2c8ca75978c3ef"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const setLS = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} };
+    const getLSmod = (k) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch(e) { return null; } };
+    const fireRefresh = () => { if (typeof window.fullRefresh === 'function') window.fullRefresh(); };
+
+    // ✅ Timestamp solishtirish: faqat yangiroq ma'lumotni qabul qilamiz
+    function acceptRemote(key, remote) {
+        if (remote === null || remote === undefined) return false;
+        if (typeof remote !== 'object') return true;
+        const local = getLSmod(key);
+        if (!local || typeof local !== 'object') return true;
+        const rTs = Number(remote.__ts || 0);
+        const lTs = Number(local.__ts || 0);
+        return rTs >= lTs;
+    }
+
+    onValue(ref(db, 'students_list/'), (snap) => {
+        const data = snap.val(); if (data == null) return;
+        setLS('students_list', data); fireRefresh();
+    });
+    onValue(ref(db, 'journal_data/'), (snap) => {
+        const data = snap.val(); if (!data) return;
+        Object.keys(data).forEach(k => {
+            if (acceptRemote(k, data[k])) setLS(k, data[k]);
+        });
+        fireRefresh();
+    });
+    onValue(ref(db, 'lesson_plans/'), (snap) => {
+        const data = snap.val(); if (!data) return;
+        Object.keys(data).forEach(k => {
+            if (acceptRemote(k, data[k])) setLS(k, data[k]);
+        });
+        if (window.renderPlans) window.renderPlans();
+    });
+    onValue(ref(db, 'class_subs/'), (snap) => {
+        const data = snap.val(); if (!data) return;
+        setLS('class_subs_', data);
+        Object.keys(data).forEach(cls => setLS(`class_subs_${cls}`, data[cls]));
+        fireRefresh();
+    });
+    onValue(ref(db, 'class_teachers/'), (snap) => {
+        const data = snap.val(); if (!data) return;
+        setLS('class_teachers', data); fireRefresh();
+    });
+    onValue(ref(db, 'date_teachers/'), (snap) => {
+        const data = snap.val(); if (!data) return;
+        setLS('date_teachers', data); fireRefresh();
+    });
+    onValue(ref(db, 'lock_settings/'), (snap) => {
+        const data = snap.val(); if (!data) return;
+        setLS('lock_settings', data); fireRefresh();
+    });
+    onValue(ref(db, 'date_swaps/'), (snap) => {
+        const data = snap.val(); if (!data) return;
+        Object.keys(data).forEach(cls => setLS(`date_swaps_${cls}`, data[cls]));
+        fireRefresh();
+    });
+    onValue(ref(db, 'groups_data/'), (snap) => {
+        const data = snap.val(); if (!data) return;
+        Object.keys(data).forEach(cls => {
+            const subs = data[cls];
+            if (subs && typeof subs === 'object') {
+                Object.keys(subs).forEach(sub => setLS(`groups_${cls}_${sub}`, subs[sub]));
+            }
+        });
+        fireRefresh();
+    });
+    onValue(ref(db, 'classes_list/'), (snap) => {
+        const data = snap.val(); if (!data) return;
+        setLS('classesList', data);
+        if (typeof window.reloadClassSelects === 'function') window.reloadClassSelects();
+        fireRefresh();
+    });
+    onValue(ref(db, 'grade_colors/'), (snap) => {
+        const data = snap.val(); if (!data) return;
+        setLS('grade_colors', data); fireRefresh();
+    });
+
+    window.syncToFirebase = (path, data) => {
+        const clean = 'journal_data/' + path.replace(/[.#$\[\]]/g, '_');
+        set(ref(db, clean), data).catch(e => console.error('[FB]', clean, e));
+    };
+    window.savePlanToFirebase = (path, data) => {
+        const clean = 'lesson_plans/' + path.replace(/[.#$\[\]]/g, '_');
+        set(ref(db, clean), data).catch(e => console.error('[FB plan]', e));
+    };
+    window.syncStudentsToFirebase    = (data) => set(ref(db, 'students_list/'), data).catch(e=>console.error(e));
+    window.syncGroupsToFirebase      = (cls, sub, data) => set(ref(db, `groups_data/${cls}/${sub}`), data).catch(e=>console.error(e));
+    window.syncClassSubsToFirebase   = (cls, data) => set(ref(db, `class_subs/${cls}`), data).catch(e=>console.error(e));
+    window.syncDateSwapsToFirebase   = (cls, data) => set(ref(db, `date_swaps/${cls}`), data).catch(e=>console.error(e));
+    window.syncLockSettingsToFirebase = (data) => set(ref(db, 'lock_settings/'), data).catch(e=>console.error(e));
+    window.syncDateTeachersToFirebase = (data) => set(ref(db, 'date_teachers/'), data).catch(e=>console.error(e));
+    window.syncClassesListToFirebase  = (data) => set(ref(db, 'classes_list/'), data).catch(e=>console.error(e));
+    window.syncClassTeachersToFirebase = (data) => set(ref(db, 'class_teachers/'), data).catch(e=>console.error(e));
+    window.syncGradeColorsToFirebase  = (data) => set(ref(db, 'grade_colors/'), data).catch(e=>console.error(e));
+</script>
+
+<style>
+    :root { --p: #4361ee; --bg: #f8f9fa; --text: #2b2d42; --today: #f0f4ff; }
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 10px; color: var(--text); }
+    .main { background: white; padding: 15px; border-radius: 15px; box-shadow: 0 5px 25px rgba(0,0,0,0.05); }
+    .head { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, var(--p), #3f37c9); color: white; padding: 12px; border-radius: 12px; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
+    .tab-btn { padding: 10px 15px; border-radius: 8px; cursor: pointer; background: white; font-weight: 600; transition: 0.2s; border: none; }
+    .tab-btn.active { background: var(--p); color: white; }
+    .tab-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .logout-btn { background: #fee2e2; color: #ef4444; border: 1px solid #fecaca; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; margin-top: 5px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #e2e8f0; padding: 8px; text-align: center; font-size: 13px; }
+    th { background: #f8f9fc; position: sticky; top: 0; z-index: 10; }
+    .s-name { text-align: left; position: sticky; left: 0; background: white; z-index: 5; font-weight: 600; min-width: 180px; }
+    .gi { width: 35px; height: 32px; text-align: center; border: 1px solid #cbd5e1; border-radius: 5px; font-weight: bold; outline: none; }
+    .locked { cursor: not-allowed !important; pointer-events: none !important; border: 1px solid #d1d5db !important; opacity: 0.85 !important; user-select: none !important; background-color: #f3f4f6 !important; color: #9ca3af !important; }
+    .is-today-cell { border-left: 3px solid var(--p) !important; border-right: 3px solid var(--p) !important; }
+    td.is-today-cell:has(> .gi:not(.has-value):not(.locked)) { background-color: var(--today) !important; }
+    .focus-mode-on table { opacity: 0.4; }
+    .focus-mode-on .hl-active { opacity: 1 !important; background: rgba(67, 97, 238, 0.15) !important; }
+    .focus-mode-on .cell-focus { opacity: 1 !important; background: white !important; outline: 3px solid var(--p) !important; transform: scale(1.1); z-index: 20; }
+    .hl-active { background: #f1f5ff; }
+    .cell-focus { background: #e0e7ff !important; outline: 2px solid var(--p); }
+    .avg-cell { background: #eef2ff !important; color: #4361ee; font-weight: bold; }
+    .y-col { background: #f3e8ff; border: 2px solid #8b5cf6 !important; }
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100; padding: 20px; overflow-y: auto; }
+    .modal-content { background: white; max-width: 1200px; margin: auto; padding: 20px; border-radius: 15px; }
+    .plans-container { display: grid; grid-template-columns: 1fr; gap: 15px; margin-top: 15px; }
+    .lesson-card { background: #f9fafb; border-radius: 12px; padding: 15px; border-left: 5px solid #ddd; position: relative; }
+    .lesson-card.is-today { border-left-color: var(--p); background: var(--today); outline: 2px solid var(--p); }
+    .lesson-card.locked { opacity: 0.85 !important; background-color: #f3f4f6 !important; }
+    .date-label { font-weight: bold; color: var(--p); font-size: 14px; }
+    .note-inp { border: none; background: #eee; font-size: 11px; padding: 2px 6px; border-radius: 4px; width: 60px; font-weight: bold; color: var(--p); margin-left: 10px; outline: none; text-transform: uppercase; }
+    .field-group { margin-top: 10px; }
+    .field-group label { display: block; font-size: 11px; color: #65676b; font-weight: 700; margin-bottom: 3px; }
+    .edit-inp { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+    .delete-btn { position: absolute; top: 10px; right: 10px; color: #ccc; cursor: pointer; font-weight: bold; }
+    .group-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 15px; }
+    .group-card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 15px; background: #f8fafc; }
+    .group-card h4 { margin-top: 0; color: var(--p); display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+    .student-check-list { max-height: 200px; overflow-y: auto; border: 1px solid #e2e8f0; padding: 8px; border-radius: 6px; background: white; margin-top: 8px; }
+    .student-check-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; cursor: pointer; }
+    .week-day-card { background: white; border-radius: 16px; padding: 18px; margin-bottom: 25px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); border-left: 6px solid var(--p); }
+    .week-day-card h3 { color: var(--p); margin-top: 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eef2ff; padding-bottom: 10px; font-size: 1.2rem; }
+    .weekly-horizontal { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 20px; padding: 10px 5px 20px 5px; align-items: flex-start; }
+    .weekly-horizontal .week-day-card { flex: 0 0 380px; min-width: 320px; max-width: 480px; margin-bottom: 0; }
+    .weekly-horizontal .week-day-card table { font-size: 11px; }
+    .weekly-horizontal .week-day-card th, .weekly-horizontal .week-day-card td { padding: 4px 5px; font-size: 11px; }
+    .weekly-horizontal .week-day-card .gi { width: 28px; height: 28px; font-size: 11px; }
+    .weekly-horizontal .week-day-card .s-name { min-width: 100px; font-size: 11px; padding: 4px; }
+    .top-info-bar { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; padding: 6px 12px; background: #f8fafc; border-radius: 10px; margin-bottom: 12px; border: 1px solid #e2e8f0; }
+    .date-display { font-size: 14px; font-weight: 600; color: #1e293b; background: white; padding: 2px 12px; border-radius: 30px; border: 1px solid #cbd5e1; }
+    .teacher-label { font-size: 12px; color: #64748b; margin-right: 4px; }
+    .subject-teacher-tag { font-size: 11px; background: #f1f5f9; padding: 1px 8px; border-radius: 12px; color: #1e293b; display: inline-block; margin-top: 2px; }
+    .save-indicator { position: fixed; bottom: 20px; right: 20px; background: #10b981; color: white; padding: 8px 16px; border-radius: 30px; font-size: 12px; font-weight: 600; opacity: 0; transition: opacity 0.3s; z-index: 999; }
+    .save-indicator.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="save-indicator" id="save-indicator">✅ Saqlandi</div>
+
+<div id="login-screen" style="text-align:center; margin-top:100px;">
+    <h2 style="color:var(--p)">Maktab Tizimi</h2>
+    <input type="text" id="t-name-input" class="gi" style="width:250px; height:45px; font-size: 16px; margin-bottom: 10px;" placeholder="Ismingizni kiriting..."> <br>
+    <button onclick="login()" class="tab-btn active" style="width: 250px;">Kirish</button>
+</div>
+
+<div id="main-content" class="main" style="display:none">
+    <div class="head">
+        <div>
+            <h3 id="t-welcome" style="margin:0"></h3>
+            <button class="logout-btn" onclick="logout()">Chiqish ⬅️</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+            <div>
+                <button class="tab-btn" onclick="setQ('Q1')" id="bQ1">1</button>
+                <button class="tab-btn" onclick="setQ('Q2')" id="bQ2">2</button>
+                <button class="tab-btn" onclick="setQ('Q3')" id="bQ3">3</button>
+                <button class="tab-btn" onclick="setQ('Q4')" id="bQ4">4</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="top-info-bar" id="top-info-bar">
+        <span><span class="teacher-label">👨‍🏫 Sinf rahbari:</span><span id="class-teacher-display" style="font-weight:600; color:#1e293b;">—</span></span>
+        <span class="date-display" id="date-display">📅 </span>
+        <span style="margin-left:auto; font-size:12px; color:#64748b;"><span class="teacher-label">📚 Fan:</span><span id="subject-name-display" style="font-weight:500;">—</span></span>
+    </div>
+
+    <div style="display:flex; gap:10px; justify-content:center; margin-bottom:15px; flex-wrap: wrap;">
+        <button class="tab-btn" id="v-daily" onclick="setView('daily')">📅 Kunlik</button>
+        <button class="tab-btn" id="v-quarter" onclick="setView('quarter')">📊 Choraklik</button>
+        <button class="tab-btn" id="v-weekly" onclick="setView('weekly')">📆 Haftalik</button>
+        <button class="tab-btn" id="fokus-btn" onclick="toggleFocusMode()" style="background:#f59e0b; color:white; border:none;">🎯 Fokus: OFF</button>
+        <button class="tab-btn" style="background:#10b981; color:white; border:none;" onclick="openReport()">📝 Hisobot</button>
+        <button class="tab-btn" style="background:#8b5cf6; color:white; border:none;" onclick="openTotalReport()">📊 Jami</button>
+        <button class="tab-btn" style="background:#4361ee; color:white; border:none;" onclick="openPlans()">📚 Mavzular</button>
+        <button class="tab-btn" style="background:#ec4899; color:white; border:none;" onclick="openGroupsModal()">👥 Guruhlar</button>
+        <button class="tab-btn" style="background:#0284c7; color:white; border:none;" onclick="openSettingsModal()">⚙️ Sozlama</button>
+        <input type="date" id="date-pick" class="gi" style="width:150px; height:38px" onchange="render()">
+        <select id="c-select" class="gi" style="width:110px; height:38px" onchange="onClassChange()"></select>
+        <select id="s-select" class="gi" style="width:160px; height:38px" onchange="onSubjectChange()"></select>
+        <select id="g-select" class="gi" style="width:130px; height:38px; display: none;" onchange="render()"></select>
+    </div>
+
+    <div id="weekly-controls" style="display:none; margin-bottom: 10px; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center;">
+        <label>Boshlanish: <input type="date" id="week-start" class="gi" style="width:150px;" onchange="render()"></label>
+        <label>Tugash: <input type="date" id="week-end" class="gi" style="width:150px;" onchange="render()"></label>
+        <button class="tab-btn" onclick="setWeekRangeToday()">Bugungi hafta</button>
+        <button class="tab-btn" id="layout-vertical" onclick="setWeeklyLayout('vertical')">⬇ Vertikal</button>
+        <button class="tab-btn" id="layout-horizontal" onclick="setWeeklyLayout('horizontal')">➡ Gorizontal</button>
+    </div>
+
+    <div id="table-area" style="overflow-x: auto; border: 1px solid #ddd; border-radius: 10px;"></div>
+</div>
+
+<div id="report-modal" class="modal">
+    <div class="modal-content">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #eee; padding-bottom:10px;">
+            <h2 id="report-title">Hisobot</h2>
+            <button class="tab-btn" style="background:#ef4444; color:white; border:none" onclick="closeReport()">Yopish</button>
+        </div>
+        <div id="report-area" style="overflow-x:auto; margin-top:20px;"></div>
+    </div>
+</div>
+
+<div id="groups-modal" class="modal">
+    <div class="modal-content" style="max-width: 950px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #eee; padding-bottom:10px;">
+            <h2 id="groups-title">Guruhlar</h2>
+            <button class="tab-btn" style="background:#ef4444; color:white; border:none" onclick="closeGroupsModal()">Yopish</button>
+        </div>
+        <div style="margin-top: 15px;">
+            <button id="add-group-btn" class="tab-btn" style="background:#4361ee; color:white; border:none;" onclick="addNewGroup()">➕ Yangi guruh</button>
+        </div>
+        <div id="groups-area" class="group-grid"></div>
+    </div>
+</div>
+
+<div id="settings-modal" class="modal">
+    <div class="modal-content" style="max-width: 950px; max-height: 90vh; overflow-y: auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #eee; padding-bottom:10px;">
+            <h2>⚙️ Sozlamalar (Admin)</h2>
+            <button class="tab-btn" style="background:#ef4444; color:white; border:none" onclick="closeSettingsModal()">Yopish</button>
+        </div>
+        <div style="margin-top:20px;">
+            <div id="pass-section">
+                <p style="font-size: 13px; color: #65676b;">Parol: <b>0000</b></p>
+                <div style="display:flex; gap:10px; margin-bottom:15px;">
+                    <input type="password" id="settings-pass" class="gi" style="width:140px; height:38px;" placeholder="0000">
+                    <button class="tab-btn" style="background:#4361ee; color:white; border:none;" onclick="verifySettingsPass()">Kirish</button>
+                </div>
+            </div>
+
+            <div id="settings-body" style="display:none; margin-top:15px; border-top:1px solid #eee; padding-top:15px;">
+
+                <div style="background:#ecfdf5; border:1px solid #6ee7b7; padding:15px; border-radius:10px; margin-bottom:20px;">
+                    <h3 style="margin-top:0; color:#065f46;">🏫 Sinflarni boshqarish</h3>
+                    <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
+                        <input type="text" id="new-class-name" class="gi" style="width:180px; height:38px;" placeholder="Yangi sinf (masalan 7A)">
+                        <button class="tab-btn" style="background:#10b981; color:white; border:none;" onclick="addNewClass()">➕ Sinf qo'shish</button>
+                    </div>
+                    <div id="classes-list-container" style="max-height:230px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:6px; padding:10px; background:white;"></div>
+                    <h4 style="margin-top:15px; color:#065f46;">Sinflar o'rnini almashtirish:</h4>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="number" id="class-swap-1" class="gi" style="width:80px; height:34px;" placeholder="1" min="1">
+                        <span>↔️</span>
+                        <input type="number" id="class-swap-2" class="gi" style="width:80px; height:34px;" placeholder="2" min="1">
+                        <button class="tab-btn" style="background:#8b5cf6; color:white; border:none;" onclick="executeSwapClassOrder()">🔄 Almashtirish</button>
+                    </div>
+                </div>
+
+                <div style="background:#fdf4ff; border:1px solid #e9d5ff; padding:15px; border-radius:10px; margin-bottom:20px;">
+                    <h3 style="margin-top:0; color:#7e22ce;">🎨 Baholar rang palitrasi</h3>
+                    <p style="font-size:12px; color:#64748b; margin-top:0;">Har bir baho uchun rang tanlang.</p>
+                    <div style="display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap; align-items:center;">
+                        <input type="text" id="new-grade-value" class="gi" style="width:130px; height:38px; font-size:14px;" placeholder="Baho (5, NB, ...)" maxlength="4">
+                        <input type="color" id="new-grade-color" style="width:60px; height:38px; cursor:pointer; border:1px solid #cbd5e1; border-radius:6px; padding:2px;" value="#10b981">
+                        <button class="tab-btn" style="background:#8b5cf6; color:white; border:none;" onclick="addGradeColor()">➕ Baho qo'shish</button>
+                    </div>
+                    <div id="grade-colors-list" style="background:white; border:1px solid #e2e8f0; border-radius:6px; padding:10px;"></div>
+                </div>
+
+                <div style="background:#f0f7ff; border:1px solid #b6d4fe; padding:15px; border-radius:10px; margin-bottom:20px;">
+                    <h3 style="margin-top:0; color:#1e293b;">👨‍🏫 Sinf rahbari</h3>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                        <select id="admin-class-teacher-select" class="gi" style="width:110px; height:38px;" onchange="loadClassTeacherData()"></select>
+                        <input type="text" id="class-teacher-input" class="edit-inp" style="max-width:300px;" placeholder="F.I.Sh">
+                        <button class="tab-btn" style="background:#4361ee; color:white; border:none; height:38px;" onclick="saveClassTeacher()">💾 Saqlash</button>
+                    </div>
+                    <div style="margin-top:8px; font-size:13px;">Hozirgi: <span id="current-class-teacher-display" style="font-weight:600;">—</span></div>
+                </div>
+
+                <div style="background:#f8fafc; border:1px solid #cbd5e1; padding:15px; border-radius:10px; margin-bottom:20px;">
+                    <h3 style="margin-top:0; color:#1e293b;">🎓 O'quvchilar</h3>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
+                        <select id="admin-class-select" class="gi" style="width:110px; height:38px;" onchange="loadAdminStudentsList()"></select>
+                    </div>
+                    <div style="display:flex; gap:10px; margin-bottom:15px; align-items:center;">
+                        <input type="text" id="new-student-name" class="edit-inp" style="max-width:300px;" placeholder="O'quvchi F.I.Sh">
+                        <button class="tab-btn" style="background:#10b981; color:white; border:none; height:38px;" onclick="addNewStudentToClass()">➕ Qo'shish</button>
+                    </div>
+                    <div id="admin-students-container" style="max-height:220px; overflow-y:auto; border:1px solid #e2e8f0; padding:10px; border-radius:6px; background:white; margin-bottom:15px;"></div>
+
+                    <div style="background:white; padding:12px; border-radius:8px; border:1px solid #e2e8f0;">
+                        <h4 style="margin:0 0 8px 0; font-size:13px; color:var(--p);">🚀 Boshqa sinfga ko'chirish</h4>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                            <select id="move-student-select" class="gi" style="width:180px; height:38px;"></select>
+                            <span>➡️</span>
+                            <select id="move-target-class-select" class="gi" style="width:110px; height:38px;"></select>
+                            <button class="tab-btn" style="background:#8b5cf6; color:white; border:none; height:38px;" onclick="executeMoveStudentToAnotherClass()">🔄 Ko'chirish</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="background:#fef3c7; border:1px solid #fcd34d; padding:15px; border-radius:10px; margin-bottom:20px;">
+                    <h3 style="margin-top:0; color:#92400e;">📚 Fanlar va ustozlar (sinf bo'yicha)</h3>
+                    <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap; align-items:center;">
+                        <select id="swap-class-select" class="gi" style="width:110px; height:38px;" onchange="loadClassSettingsData()"></select>
+                        <input type="date" id="swap-date" class="gi" style="width:150px; height:38px;">
+                    </div>
+                    <div style="background:white; padding:12px; border-radius:8px; margin-bottom:12px;">
+                        <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
+                            <input type="text" id="new-sub-name" class="gi" style="width:140px; height:38px;" placeholder="Fan nomi">
+                            <input type="text" id="new-sub-teacher" class="gi" style="width:140px; height:38px;" placeholder="Ustoz">
+                            <input type="text" id="new-sub-days" class="gi" style="width:120px; height:38px;" placeholder="Kunlar: 1,3,5">
+                            <button class="tab-btn" style="background:#10b981; color:white; border:none;" onclick="addNewClassSubject()">➕ Qo'shish</button>
+                        </div>
+                    </div>
+                    <div id="class-subjects-list" style="max-height:220px; overflow-y:auto; border:1px solid #e2e8f0; padding:10px; border-radius:6px; background:white;"></div>
+                    <div style="margin-top:12px; background:white; padding:10px; border-radius:8px;">
+                        <h4 style="margin:0 0 5px 0; font-size:13px; color:var(--p);">Fan tartibini almashtirish</h4>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <input type="number" id="swap-sub-idx-1" class="gi" style="width:70px; height:34px;" min="1">
+                            <span>↔️</span>
+                            <input type="number" id="swap-sub-idx-2" class="gi" style="width:70px; height:34px;" min="1">
+                            <button class="tab-btn" style="background:#8b5cf6; color:white; border:none;" onclick="executeSwapSubjectOrder()">🔄</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="background:#f1f5f9; border:1px solid #cbd5e1; padding:15px; border-radius:10px; margin-bottom:20px;">
+                    <h3 style="margin-top:0; color:#1e293b;">🔒 Qulflash va maxsus ustozlar</h3>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+                        <select id="lock-class-select" class="gi" style="width:100px; height:38px;" onchange="loadLockSettingsSubSelect()"></select>
+                        <select id="lock-sub-select" class="gi" style="width:160px; height:38px;" onchange="loadLockSettingsData()"></select>
+                    </div>
+                    <div style="display:flex; gap:15px; flex-wrap:wrap; margin-top:15px;">
+                        <div style="flex:1; min-width:320px; background:white; padding:10px; border-radius:8px;">
+                            <h4 style="margin:0 0 8px 0; font-size:13px; color:var(--p);">Kataklarni qulflash</h4>
+                            <select id="lock-cell-q-select" class="gi" style="width:80px; height:32px; margin-bottom:8px;" onchange="loadLockCellsList()">
+                                <option value="Q1">Q1</option><option value="Q2">Q2</option><option value="Q3">Q3</option><option value="Q4">Q4</option>
+                            </select>
+                            <div id="lock-cells-students-list" style="max-height:180px; overflow-y:auto;"></div>
+                        </div>
+                        <div style="flex:1; min-width:300px; background:white; padding:10px; border-radius:8px;">
+                            <h4 style="margin:0 0 8px 0; font-size:13px; color:var(--p);">Sana ustozlari</h4>
+                            <select id="lock-q-select" class="gi" style="width:80px; height:32px; margin-bottom:8px;" onchange="loadLockDatesList()">
+                                <option value="Q1">Q1</option><option value="Q2">Q2</option><option value="Q3">Q3</option><option value="Q4">Q4</option>
+                            </select>
+                            <div id="lock-dates-list" style="max-height:160px; overflow-y:auto;"></div>
+                        </div>
+                    </div>
+                    <div style="margin-top:15px; background:white; padding:12px; border-radius:8px;">
+                        <h4 style="margin:0 0 8px 0; font-size:13px; color:var(--p);">🏆 Chorak / Imtihon / Natija / Yillik ustozlari</h4>
+                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:10px;">
+                            <div><label style="font-size:11px; font-weight:bold;">1-Chorak:</label><input type="text" id="special-q1-teacher" class="gi" style="width:100%; height:34px;"></div>
+                            <div><label style="font-size:11px; font-weight:bold;">2-Chorak:</label><input type="text" id="special-q2-teacher" class="gi" style="width:100%; height:34px;"></div>
+                            <div><label style="font-size:11px; font-weight:bold;">3-Chorak:</label><input type="text" id="special-q3-teacher" class="gi" style="width:100%; height:34px;"></div>
+                            <div><label style="font-size:11px; font-weight:bold;">4-Chorak:</label><input type="text" id="special-q4-teacher" class="gi" style="width:100%; height:34px;"></div>
+                            <div><label style="font-size:11px; font-weight:bold;">Imtihon:</label><input type="text" id="special-exam-teacher" class="gi" style="width:100%; height:34px;"></div>
+                            <div><label style="font-size:11px; font-weight:bold;">Natija:</label><input type="text" id="special-result-teacher" class="gi" style="width:100%; height:34px;"></div>
+                            <div><label style="font-size:11px; font-weight:bold;">Yillik:</label><input type="text" id="special-annual-teacher" class="gi" style="width:100%; height:34px;"></div>
+                        </div>
+                        <div style="margin-top:10px; text-align:right;">
+                            <button class="tab-btn" style="background:#10b981; color:white; border:none;" onclick="saveSpecialColumnTeachers()">💾 Saqlash</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let teacher = localStorage.getItem('loggedTeacher') || "",
+        currentView = localStorage.getItem('last_view') || "daily",
+        activeQuarter = localStorage.getItem('last_Q') || "Q1",
+        isFocusMode = localStorage.getItem('focus_mode') === 'true',
+        weeklyLayout = localStorage.getItem('weekly_layout') || 'vertical';
+
+    const mon = ['Yan','Fev','Mar','Apr','May','Iyun','Iyul','Avg','Sep','Okt','Noy','Dek'];
+    const getTodayStr = () => `${new Date().getDate()}-${mon[new Date().getMonth()]}`;
+
+    function hEsc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function jEsc(s) { return hEsc(s).replace(/'/g, "\\'"); }
+    function lockTrue(v) { return v === true || v === 'true' || v === 1 || v === '1'; }
+
+    function lsGet(k, fb) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch(e) { return fb; } }
+    function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} }
+
+    function showSaved() {
+        const el = document.getElementById('save-indicator');
+        if (!el) return;
+        el.classList.add('show');
+        clearTimeout(window.__saveTimer);
+        window.__saveTimer = setTimeout(() => el.classList.remove('show'), 1200);
+    }
+
+    function getStudentsListObj() { return lsGet('students_list', {}); }
+    function saveStudentsListObj(o) { lsSet('students_list', o); window.syncStudentsToFirebase(o); }
+
+    function markKey(q, cls, sub) { return `marks_${q}_${cls}_${sub}`; }
+    function getMarks(q, cls, sub) { return lsGet(markKey(q, cls, sub), {}); }
+    function saveMarksObj(q, cls, sub, o) {
+        o.__ts = Date.now();
+        lsSet(markKey(q, cls, sub), o);
+        window.syncToFirebase(markKey(q, cls, sub), o);
+        showSaved();
+    }
+
+    function checkAccess(list) {
+        if (!list) return false;
+        return list.split(',').map(n => n.trim().toLowerCase()).includes((teacher||'').toLowerCase());
+    }
+
+    function getClassesList() {
+        let c = lsGet('classesList', null);
+        if (!c || !Array.isArray(c) || c.length === 0) c = ["5A","6B"];
+        return c;
+    }
+    function saveClassesList(c) { lsSet('classesList', c); window.syncClassesListToFirebase(c); }
+
+    function getGradeColors() {
+        return lsGet('grade_colors', {"5":"#10b981","4":"#f59e0b","3":"#f97316","2":"#ef4444","1":"#dc2626","NB":"#8b5cf6"});
+    }
+    function saveGradeColors(c) { lsSet('grade_colors', c); window.syncGradeColorsToFirebase(c); }
+    function getGradeStyle(val) {
+        if (!val) return '';
+        const v = val.toString().toUpperCase().trim();
+        const colors = getGradeColors();
+        if (colors[v]) return `background: ${colors[v]} !important; color: white !important; border: none !important;`;
+        return '';
+    }
+    function renderGradeColorsList() {
+        const colors = getGradeColors();
+        const div = document.getElementById('grade-colors-list');
+        if (!div) return;
+        div.innerHTML = '';
+        const keys = Object.keys(colors);
+        if (keys.length === 0) { div.innerHTML = '<p style="color:#64748b; font-size:12px; margin:0;">Ranglar yo\'q.</p>'; return; }
+        let html = '';
+        keys.forEach(k => {
+            html += `<div style="display:flex; gap:10px; align-items:center; margin-bottom:6px; border-bottom:1px solid #f1f5f9; padding-bottom:6px;">
+                <input type="text" class="edit-inp" style="width:90px; height:34px; font-weight:bold; text-align:center;" value="${hEsc(k)}" onchange="renameGradeColor(this.dataset.k, this.value)" data-k="${hEsc(k)}">
+                <input type="color" style="width:60px; height:34px; cursor:pointer; border:1px solid #cbd5e1; border-radius:6px; padding:2px;" value="${hEsc(colors[k])}" onchange="updateGradeColor(this.dataset.k, this.value)" data-k="${hEsc(k)}">
+                <div style="min-width:50px; height:34px; padding:0 12px; border-radius:6px; background:${hEsc(colors[k])}; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:14px;">${hEsc(k)}</div>
+                <button class="tab-btn" style="background:#ef4444; color:white; border:none; padding:4px 10px; height:34px;" onclick="deleteGradeColor(this.dataset.k)" data-k="${hEsc(k)}">🗑️</button>
+            </div>`;
+        });
+        div.innerHTML = html;
+    }
+    function addGradeColor() {
+        const v = document.getElementById('new-grade-value').value.trim().toUpperCase();
+        const c = document.getElementById('new-grade-color').value;
+        if (!v) return alert("Baho qiymatini kiriting!");
+        const colors = getGradeColors();
+        if (colors[v] && !confirm("Bu baho mavjud. Rangni yangilaymizmi?")) return;
+        colors[v] = c; saveGradeColors(colors);
+        document.getElementById('new-grade-value').value = '';
+        renderGradeColorsList(); render();
+    }
+    function updateGradeColor(key, color) { const colors = getGradeColors(); colors[key] = color; saveGradeColors(colors); renderGradeColorsList(); render(); }
+    function renameGradeColor(oldV, newV) {
+        newV = newV.trim().toUpperCase();
+        if (!newV || newV === oldV) { renderGradeColorsList(); return; }
+        const colors = getGradeColors();
+        if (colors[newV]) { alert("Bu baho mavjud!"); renderGradeColorsList(); return; }
+        colors[newV] = colors[oldV]; delete colors[oldV];
+        saveGradeColors(colors); renderGradeColorsList(); render();
+    }
+    function deleteGradeColor(key) {
+        if (!confirm(`"${key}" baho rangini o'chirmoqchimisiz?`)) return;
+        const colors = getGradeColors(); delete colors[key];
+        saveGradeColors(colors); renderGradeColorsList(); render();
+    }
+
+    window.reloadClassSelects = function() {
+        const classes = getClassesList();
+        const sel = document.getElementById('c-select');
+        const old = sel.value;
+        sel.innerHTML = "";
+        classes.forEach(c => sel.add(new Option(c + "-sinf", c)));
+        if (old && classes.includes(old)) sel.value = old;
+
+        ['admin-class-teacher-select','admin-class-select','move-target-class-select','lock-class-select','swap-class-select'].forEach(id => {
+            const s = document.getElementById(id);
+            if (s) {
+                const o = s.value;
+                s.innerHTML = "";
+                classes.forEach(c => s.add(new Option(c + "-sinf", c)));
+                if (o && classes.includes(o)) s.value = o;
+            }
+        });
+        if (typeof render === 'function') render();
+    };
+
+    function login() {
+        const v = document.getElementById('t-name-input').value.trim();
+        if (!v) return alert("Ismingizni kiriting!");
+        teacher = v; localStorage.setItem('loggedTeacher', teacher); showMain();
+    }
+    function logout() { localStorage.removeItem('loggedTeacher'); location.reload(); }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        if (teacher) showMain();
+        document.getElementById('weekly-controls').style.display = 'none';
+        updateDateDisplay();
+    });
+
+    function updateDateDisplay() {
+        const di = document.getElementById('date-pick');
+        const d = document.getElementById('date-display');
+        if (di && d) {
+            const v = di.value;
+            if (v) {
+                const dt = new Date(v);
+                d.textContent = `📅 ${dt.toLocaleDateString('uz-UZ', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}`;
+            } else d.textContent = '📅 ';
+        }
+    }
+
+    function showMain() {
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('main-content').style.display = 'block';
+        document.getElementById('t-welcome').innerText = "👨‍🏫 " + teacher;
+        window.reloadClassSelects();
+
+        if (localStorage.getItem('last_selected_date')) document.getElementById('date-pick').value = localStorage.getItem('last_selected_date');
+        else document.getElementById('date-pick').valueAsDate = new Date();
+        updateDateDisplay();
+
+        const last = localStorage.getItem('last_class');
+        const sel = document.getElementById('c-select');
+        if (last && Array.from(sel.options).some(o => o.value === last)) sel.value = last;
+
+        updateSubjectsList();
+        updateGroupSelect();
+        updateFocusUI();
+        document.getElementById('weekly-controls').style.display = (currentView==='weekly') ? 'flex' : 'none';
+
+        const cls = document.getElementById('c-select').value;
+        if (cls) updateClassTeacherDisplay(cls);
+        render();
+    }
+
+    function setView(v) {
+        currentView = v; localStorage.setItem('last_view', v);
+        document.getElementById('weekly-controls').style.display = (v==='weekly') ? 'flex' : 'none';
+        render();
+    }
+    function setWeeklyLayout(l) {
+        weeklyLayout = l; localStorage.setItem('weekly_layout', l);
+        document.getElementById('layout-vertical').classList.toggle('active-layout', l==='vertical');
+        document.getElementById('layout-horizontal').classList.toggle('active-layout', l==='horizontal');
+        render();
+    }
+    function setQ(q) { activeQuarter = q; localStorage.setItem('last_Q', q); render(); }
+    function onClassChange() {
+        updateSubjectsList(); updateGroupSelect();
+        updateClassTeacherDisplay(document.getElementById('c-select').value);
+        render();
+    }
+    function onSubjectChange() {
+        localStorage.setItem('last_sub', document.getElementById('s-select').value);
+        updateGroupSelect(); render();
+    }
+
+    function toggleFocusMode() {
+        isFocusMode = !isFocusMode;
+        localStorage.setItem('focus_mode', isFocusMode);
+        updateFocusUI();
+    }
+    function updateFocusUI() {
+        const b = document.getElementById('fokus-btn');
+        if (!b) return;
+        if (isFocusMode) { document.body.classList.add('focus-mode-on'); b.innerText = "🎯 Fokus: ON"; b.style.background = "#10b981"; }
+        else { document.body.classList.remove('focus-mode-on'); b.innerText = "🎯 Fokus: OFF"; b.style.background = "#f59e0b"; }
+    }
+    function attachHighlights() {
+        document.querySelectorAll('.gi:not([disabled]):not(.locked)').forEach(inp => {
+            inp.onfocus = function() {
+                const td = this.parentElement, tr = td.parentElement, colIdx = td.cellIndex, table = tr.closest('table');
+                if (!table) return;
+                table.querySelectorAll('.hl-active, .cell-focus').forEach(el => el.classList.remove('hl-active','cell-focus'));
+                tr.querySelectorAll('td').forEach(c => c.classList.add('hl-active'));
+                Array.from(table.rows).forEach(r => { if (r.cells[colIdx]) r.cells[colIdx].classList.add('hl-active'); });
+                td.classList.add('cell-focus');
+            };
+        });
+    }
+
+    function getClassTeachers() { return lsGet('class_teachers', {}); }
+    function saveClassTeachers(d) { lsSet('class_teachers', d); window.syncClassTeachersToFirebase(d); }
+    function updateClassTeacherDisplay(cls) {
+        document.getElementById('class-teacher-display').textContent = getClassTeachers()[cls] || '—';
+    }
+    function loadClassTeacherData() {
+        const cls = document.getElementById('admin-class-teacher-select').value;
+        if (!cls) return;
+        const c = getClassTeachers()[cls] || '';
+        document.getElementById('current-class-teacher-display').textContent = c || '—';
+        document.getElementById('class-teacher-input').value = c;
+    }
+    function saveClassTeacher() {
+        const cls = document.getElementById('admin-class-teacher-select').value;
+        const name = document.getElementById('class-teacher-input').value.trim();
+        if (!cls) return alert('Sinf tanlang!');
+        const t = getClassTeachers();
+        if (name) t[cls] = name; else delete t[cls];
+        saveClassTeachers(t); loadClassTeacherData(); updateClassTeacherDisplay(cls);
+        alert('Saqlandi!');
+    }
+
+    function getClassSubjects(cls) {
+        let cs = lsGet(`class_subs_${cls}`, null);
+        if (!cs) cs = lsGet('class_subs_', {})[cls] || [];
+        if (!cs || cs.length === 0) {
+            const type = parseInt(cls) <= 4 ? 'Kichik' : 'Katta';
+            const subsData = lsGet('subjectsData', {Kichik:[], Katta:[]});
+            cs = (subsData[type] || []).map(s => ({ ...s, days: s.days || [1,3,5] }));
+        }
+        return cs;
+    }
+
+    function updateSubjectsList() {
+        const cls = document.getElementById('c-select').value;
+        if (!cls) return;
+        const classSubs = getClassSubjects(cls);
+        const sSel = document.getElementById('s-select');
+        const old = sSel.value || localStorage.getItem('last_sub');
+        sSel.innerHTML = "";
+        classSubs.forEach(s => sSel.add(new Option(s.name, s.name)));
+        if (old && Array.from(sSel.options).some(o => o.value === old)) sSel.value = old;
+        localStorage.setItem('last_sub', sSel.value);
+        document.getElementById('subject-name-display').textContent = sSel.value || '—';
+    }
+
+    function updateGroupSelect() {
+        const cls = document.getElementById('c-select').value;
+        const sub = document.getElementById('s-select').value;
+        const gSel = document.getElementById('g-select');
+        if (!cls || !sub) { gSel.style.display = 'none'; return; }
+        const groups = lsGet(`groups_${cls}_${sub}`, []);
+        const old = gSel.value;
+        if (groups.length === 0) { gSel.style.display='none'; gSel.innerHTML=""; gSel.value="all"; return; }
+        gSel.style.display = 'inline-block';
+        gSel.innerHTML = "";
+        gSel.add(new Option("Jami sinf", "all"));
+        groups.forEach((g, i) => gSel.add(new Option(g.name, i)));
+        if (old && Array.from(gSel.options).some(o => o.value === old)) gSel.value = old;
+    }
+
+    function updateSiteTitle() {
+        const cls = document.getElementById('c-select')?.value || "";
+        const sub = document.getElementById('s-select')?.value || "";
+        document.title = (cls || sub) ? `${cls} | ${sub}` : "Journal";
+        document.getElementById('subject-name-display').textContent = sub || '—';
+    }
+
+    function render() {
+        const cls = document.getElementById('c-select').value;
+        const sub = document.getElementById('s-select').value;
+        if (!cls || !sub) return;
+        localStorage.setItem('last_class', cls);
+        localStorage.setItem('last_selected_date', document.getElementById('date-pick').value);
+        updateDateDisplay();
+
+        document.getElementById('v-daily').classList.toggle('active', currentView==='daily');
+        document.getElementById('v-quarter').classList.toggle('active', currentView==='quarter');
+        document.getElementById('v-weekly').classList.toggle('active', currentView==='weekly');
+        document.querySelectorAll('.head .tab-btn').forEach(b => b.classList.toggle('active', b.id === 'b'+activeQuarter));
+
+        if (currentView === 'daily') document.getElementById('table-area').innerHTML = renderDaily(cls);
+        else if (currentView === 'quarter') document.getElementById('table-area').innerHTML = renderQuarter(cls);
+        else if (currentView === 'weekly') document.getElementById('table-area').innerHTML = renderWeekly(cls);
+
+        updateSiteTitle();
+        attachHighlights();
+        updateClassTeacherDisplay(cls);
+    }
+
+    function getSortedStudents(cls) {
+        const sl = getStudentsListObj();
+        let names = (sl[cls] || []).slice();
+        names.sort((a, b) => a.localeCompare(b, 'uz'));
+        const gIdx = document.getElementById('g-select').value;
+        const sub = document.getElementById('s-select').value;
+        if (gIdx !== "all" && gIdx !== "" && sub) {
+            const groups = lsGet(`groups_${cls}_${sub}`, []);
+            const g = groups[parseInt(gIdx)];
+            if (g && g.students) names = names.filter(n => g.students.includes(n));
+        }
+        return names;
+    }
+
+    function isAllowedForStudent(cls, subName, subObj, studentName) {
+        const groups = lsGet(`groups_${cls}_${subName}`, []);
+        if (groups.length === 0) return checkAccess(subObj?.teacher);
+        const mine = groups.filter(g => g.students && g.students.includes(studentName));
+        if (mine.length > 0) return mine.some(g => g.teacher && checkAccess(g.teacher));
+        return checkAccess(subObj?.teacher);
+    }
+
+    function getLessonsForDate(cls, dateValStr) {
+        const dt = new Date(dateValStr);
+        const dateStr = `${dt.getDate()}-${mon[dt.getMonth()]}`;
+        const classSubs = getClassSubjects(cls);
+        const curDay = dt.getDay();
+        let lessons = [];
+        classSubs.forEach(s => {
+            if (s.days && Array.isArray(s.days)) {
+                const cnt = s.days.filter(d => d === curDay).length;
+                for (let i=0; i<cnt; i++) lessons.push({ ...s, lessonIndex: i });
+            }
+        });
+        const swaps = lsGet(`date_swaps_${cls}`, {})[dateStr];
+        if (swaps && Array.isArray(swaps)) {
+            swaps.forEach(sw => {
+                if (lessons[sw.i1] && lessons[sw.i2]) {
+                    const t = lessons[sw.i1]; lessons[sw.i1] = lessons[sw.i2]; lessons[sw.i2] = t;
+                }
+            });
+        }
+        return lessons;
+    }
+
+    function dateKey(d) { return `${d.date}_${d.instance}`; }
+
+    function renderDaily(cls, dateValStrParam) {
+        const dateValStr = dateValStrParam || document.getElementById('date-pick').value;
+        const dt = new Date(dateValStr);
+        const dateStr = `${dt.getDate()}-${mon[dt.getMonth()]}`;
+        const isToday = (dateStr === getTodayStr());
+        const students = getSortedStudents(cls);
+        const locks = lsGet('lock_settings', {})[cls] || {};
+        const dtT = lsGet('date_teachers', {});
+        const lessons = getLessonsForDate(cls, dateValStr);
+
+        let h = `<table><thead><tr><th>№</th><th class="s-name">O'quvchi</th>`;
+        lessons.forEach((l, num) => {
+            const dates = generateDates(cls, l.name, activeQuarter);
+            const dIdx = dates.findIndex(d => d.date === dateStr && d.instance === l.lessonIndex);
+            const tt = dtT[`${cls}_${l.name}_${activeQuarter}_d_${dIdx}`] || l.teacher || '';
+            h += `<th class="${isToday?'is-today-cell':''}">${num+1}. ${hEsc(l.name)}<br><span class="subject-teacher-tag">${hEsc(tt)||'—'}</span></th>`;
+        });
+        h += `</tr></thead><tbody>`;
+
+        students.forEach((studentName, i) => {
+            h += `<tr><td>${i+1}</td><td class="s-name">${hEsc(studentName)}</td>`;
+            lessons.forEach(l => {
+                const dates = generateDates(cls, l.name, activeQuarter);
+                const dIdx = dates.findIndex(d => d.date === dateStr && d.instance === l.lessonIndex);
+                const cellLocked = lockTrue(locks.cells?.[studentName]?.[l.name]?.[activeQuarter]?.[dIdx]);
+                const dLocked = lockTrue(locks.dates?.[l.name]?.[activeQuarter]?.[dIdx]);
+                const mObj = getMarks(activeQuarter, cls, l.name);
+                const dk = (dIdx !== -1 && dates[dIdx]) ? dateKey(dates[dIdx]) : '';
+                const val = (dk && mObj[studentName]) ? (mObj[studentName][dk] || '') : '';
+                const st = dtT[`${cls}_${l.name}_${activeQuarter}_d_${dIdx}`] || '';
+                const hasA = st ? checkAccess(st) : isAllowedForStudent(cls, l.name, l, studentName);
+                const ro = !hasA || dLocked || cellLocked;
+                const styleAttr = ro ? '' : getGradeStyle(val);
+                const hv = val ? 'has-value' : '';
+                h += `<td class="${isToday?'is-today-cell':''}"><input type="text" class="gi ${hv} ${ro?'locked':''}" style="${styleAttr}" value="${hEsc(val)}" ${ro?'disabled':''} onchange="saveM('${jEsc(activeQuarter)}','${jEsc(cls)}','${jEsc(l.name)}',${i},${dIdx},this.value)"></td>`;
+            });
+            h += `</tr>`;
+        });
+        return h + `</tbody></table>`;
+    }
+
+    function renderQuarter(cls) {
+        const sub = document.getElementById('s-select').value;
+        const classSubs = getClassSubjects(cls);
+        const subObj = classSubs.find(s => s.name === sub);
+        const students = getSortedStudents(cls);
+        const locks = lsGet('lock_settings', {})[cls] || {};
+        const dtT = lsGet('date_teachers', {});
+        const dates = generateDates(cls, sub, activeQuarter);
+        const marks = getMarks(activeQuarter, cls, sub);
+        const today = getTodayStr();
+
+        let h = `<table style="min-width:1000px"><thead><tr><th>№</th><th class="s-name">O'quvchi</th>`;
+        dates.forEach((d, i) => {
+            const tt = dtT[`${cls}_${sub}_${activeQuarter}_d_${i}`] || subObj?.teacher || '';
+            h += `<th class="${d.date===today?'is-today-cell':''}">${hEsc(d.date)}<br><span class="subject-teacher-tag">${hEsc(tt)}</span></th>`;
+        });
+        h += `<th class="avg-cell">O'RT.</th><th>CHORAK</th></tr></thead><tbody>`;
+
+        students.forEach((studentName, i) => {
+            let row = [];
+            h += `<tr><td>${i+1}</td><td class="s-name">${hEsc(studentName)}</td>`;
+            dates.forEach((d, idx) => {
+                const dk = dateKey(d);
+                const val = marks[studentName]?.[dk] || '';
+                if (val && !isNaN(val)) row.push(parseFloat(val));
+                const dLocked = lockTrue(locks.dates?.[sub]?.[activeQuarter]?.[idx]);
+                const cLocked = lockTrue(locks.cells?.[studentName]?.[sub]?.[activeQuarter]?.[idx]);
+                const st = dtT[`${cls}_${sub}_${activeQuarter}_d_${idx}`] || '';
+                const hasA = st ? checkAccess(st) : isAllowedForStudent(cls, sub, subObj, studentName);
+                const ro = !hasA || dLocked || cLocked;
+                const styleAttr = ro ? '' : getGradeStyle(val);
+                const hv = val ? 'has-value' : '';
+                h += `<td class="${d.date===today?'is-today-cell':''}"><input type="text" class="gi ${hv} ${ro?'locked':''}" style="${styleAttr}" value="${hEsc(val)}" ${ro?'disabled':''} onchange="saveM('${jEsc(activeQuarter)}','${jEsc(cls)}','${jEsc(sub)}',${i},${idx},this.value)"></td>`;
+            });
+            const avg = row.length ? (row.reduce((a,b)=>a+b,0)/row.length).toFixed(1) : '';
+            const qVal = marks[studentName]?.['__quarter'] || '';
+            const qLocked = lockTrue(locks.cells?.[studentName]?.[sub]?.[activeQuarter]?.['__quarter']);
+            const qt = dtT[`${cls}_${sub}_${activeQuarter}_quarter`] || dtT[`${cls}_${sub}_quarter`] || '';
+            const hasQ = qt ? checkAccess(qt) : isAllowedForStudent(cls, sub, subObj, studentName);
+            const roQ = !hasQ || qLocked;
+            const qStyle = roQ ? '' : getGradeStyle(qVal);
+            const qHv = qVal ? 'has-value' : '';
+            h += `<td class="avg-cell">${avg}</td><td><input type="text" class="gi ${qHv} ${roQ?'locked':''}" style="${qStyle}" value="${hEsc(qVal)}" ${roQ?'disabled':''} onchange="saveMQ('${jEsc(activeQuarter)}','${jEsc(cls)}','${jEsc(sub)}',${i},this.value)"></td></tr>`;
+        });
+        return h + `</tbody></table>`;
+    }
+
+    function renderWeekly(cls) {
+        const s = document.getElementById('week-start').value;
+        const e = document.getElementById('week-end').value;
+        if (!s || !e) return "<p style='text-align:center; padding:20px;'>Hafta oralig'ini tanlang.</p>";
+        const sd = new Date(s), ed = new Date(e);
+        if (sd > ed) return "<p style='text-align:center; color:#ef4444; padding:20px;'>Sana xato.</p>";
+        let html = "";
+        let cur = new Date(sd);
+        let c = 0;
+        while (cur <= ed) {
+            const ds = cur.toISOString().slice(0,10);
+            const dd = cur.toLocaleDateString('uz-UZ', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+            html += `<div class="week-day-card"><h3>📅 ${hEsc(dd)} <span>${hEsc(ds)}</span></h3>${renderDaily(cls, ds)}</div>`;
+            cur.setDate(cur.getDate() + 1); c++;
+        }
+        if (c === 0) return "<p style='text-align:center;'>Bo'sh.</p>";
+        return weeklyLayout === 'horizontal' ? `<div class="weekly-horizontal">${html}</div>` : html;
+    }
+
+    function setWeekRangeToday() {
+        const t = new Date(), dow = t.getDay();
+        const diff = dow === 0 ? 6 : dow - 1;
+        const m = new Date(t); m.setDate(t.getDate() - diff);
+        const s = new Date(m); s.setDate(m.getDate() + 6);
+        document.getElementById('week-start').value = m.toISOString().slice(0,10);
+        document.getElementById('week-end').value = s.toISOString().slice(0,10);
+        render();
+    }
+
+    function generateDates(cls, sub, q) {
+        let y = new Date().getFullYear(); if (new Date().getMonth() < 7) y--;
+        const r = {'Q1':[y+'-09-02', y+'-11-01'], 'Q2':[y+'-11-04', (y+1)+'-01-08'], 'Q3':[(y+1)+'-01-12', (y+1)+'-03-20'], 'Q4':[(y+1)+'-04-01', (y+1)+'-05-25']};
+        let start = new Date(r[q][0]), end = new Date(r[q][1]), res = [];
+        const classSubs = getClassSubjects(cls);
+        const sObj = classSubs.find(s => s.name === sub);
+        const daysArr = sObj ? sObj.days : [];
+        while (start <= end) {
+            const dow = start.getDay();
+            const cnt = (daysArr || []).filter(d => d === dow).length;
+            for (let i=0; i<cnt; i++) res.push({ date: start.getDate()+'-'+mon[start.getMonth()], instance: i });
+            start.setDate(start.getDate()+1);
+        }
+        return res;
+    }
+
+    // ✅ BAHO SAQLASH: butun fan obyektini __ts bilan saqlaymiz
+    window.saveM = function(q, cls, sub, displayIdx, dIdx, val) {
+        const names = getSortedStudents(cls);
+        const studentName = names[displayIdx];
+        if (!studentName) return;
+        const dates = generateDates(cls, sub, q);
+        const d = dates[dIdx];
+        if (!d) return;
+        const dk = dateKey(d);
+        const m = getMarks(q, cls, sub);
+        if (!m[studentName]) m[studentName] = {};
+        const v = (val||'').toUpperCase().trim();
+        if (v) m[studentName][dk] = v; else delete m[studentName][dk];
+        if (Object.keys(m[studentName]).length === 0) delete m[studentName];
+        saveMarksObj(q, cls, sub, m);
+        render();
+    };
+
+    window.saveMQ = function(q, cls, sub, displayIdx, val) {
+        const names = getSortedStudents(cls);
+        const studentName = names[displayIdx];
+        if (!studentName) return;
+        const m = getMarks(q, cls, sub);
+        if (!m[studentName]) m[studentName] = {};
+        const v = (val||'').toUpperCase().trim();
+        if (v) m[studentName]['__quarter'] = v; else delete m[studentName]['__quarter'];
+        if (Object.keys(m[studentName]).length === 0) delete m[studentName];
+        saveMarksObj(q, cls, sub, m);
+        render();
+    };
+
+    window.saveExtra = function(cls, sub, type, name, val) {
+        const key = `marks_${type}_${cls}_${sub}`;
+        const m = lsGet(key, {});
+        const v = (val||'').toUpperCase().trim();
+        if (v) m[name] = v; else delete m[name];
+        m.__ts = Date.now();
+        lsSet(key, m);
+        window.syncToFirebase(key, m);
+        showSaved();
+    };
+
+    window.saveY = function(k, name, val) {
+        const m = lsGet(k, {});
+        const v = (val||'').toUpperCase().trim();
+        if (v) m[name] = v; else delete m[name];
+        m.__ts = Date.now();
+        lsSet(k, m);
+        window.syncToFirebase(k, m);
+        showSaved();
+    };
+
+    window.openReport = function() {
+        const cls = document.getElementById('c-select').value;
+        const sub = document.getElementById('s-select').value;
+        const students = getSortedStudents(cls);
+        const classSubs = getClassSubjects(cls);
+        const subObj = classSubs.find(s => s.name === sub);
+        const dtT = lsGet('date_teachers', {});
+
+        let h = `<table><thead><tr><th>№</th><th class="s-name">O'quvchi</th><th>1-Ch</th><th>2-Ch</th><th>3-Ch</th><th>4-Ch</th><th class="avg-cell">YIL. O'RT.</th><th class="y-col">YILLIK</th></tr></thead><tbody>`;
+        students.forEach((name, i) => {
+            h += `<tr><td>${i+1}</td><td class="s-name">${hEsc(name)}</td>`;
+            let qv = [];
+            ['Q1','Q2','Q3','Q4'].forEach(q => {
+                const val = getMarks(q, cls, sub)[name]?.['__quarter'] || '';
+                if (val && !isNaN(val)) qv.push(parseFloat(val));
+                const st = getGradeStyle(val);
+                h += `<td><div class="gi" style="line-height:30px; margin:auto; width:auto; padding:0 8px; ${st}">${hEsc(val)}</div></td>`;
+            });
+            const avg = qv.length ? (qv.reduce((a,b)=>a+b,0)/qv.length).toFixed(1) : '-';
+            const yKey = `marks_Annual_${cls}_${sub}`;
+            const yVal = lsGet(yKey, {})[name] || '';
+            const at = dtT[`${cls}_${sub}_annual`] || '';
+            const hasA = at ? checkAccess(at) : isAllowedForStudent(cls, sub, subObj, name);
+            const yStyle = hasA ? getGradeStyle(yVal) : '';
+            h += `<td class="avg-cell">${avg}</td><td class="y-col"><input type="text" class="gi" style="${yStyle}" value="${hEsc(yVal)}" ${!hasA?'disabled':''} onchange="saveY('${jEsc(yKey)}', this.dataset.n, this.value)" data-n="${hEsc(name)}"></td></tr>`;
+        });
+        document.getElementById('report-area').innerHTML = h + `</tbody></table>`;
+        document.getElementById('report-title').innerText = `${cls}-sinf | ${sub}`;
+        document.getElementById('report-modal').style.display = 'block';
+    };
+
+    window.openTotalReport = function() {
+        const cls = document.getElementById('c-select').value;
+        const students = getSortedStudents(cls);
+        const subjects = getClassSubjects(cls);
+        const dtT = lsGet('date_teachers', {});
+
+        let h = `<table style="min-width:1400px"><thead><tr><th>№</th><th class="s-name">O'quvchi</th>`;
+        subjects.forEach(s => h += `<th colspan="7">${hEsc(s.name)}</th>`);
+        h += `</tr><tr><th></th><th></th>`;
+        subjects.forEach(() => h += `<th>1-Ch</th><th>2-Ch</th><th>3-Ch</th><th>4-Ch</th><th>Imt.</th><th>Nat.</th><th>Yil.</th>`);
+        h += `</tr></thead><tbody>`;
+
+        students.forEach((name, i) => {
+            h += `<tr><td>${i+1}</td><td class="s-name">${hEsc(name)}</td>`;
+            subjects.forEach(s => {
+                const getQ = q => getMarks(q, cls, s.name)[name]?.['__quarter'] || '';
+                const q1=getQ('Q1'), q2=getQ('Q2'), q3=getQ('Q3'), q4=getQ('Q4');
+                const imt = lsGet(`marks_Imtihon_${cls}_${s.name}`, {})[name] || '';
+                const nat = lsGet(`marks_Natija_${cls}_${s.name}`, {})[name] || '';
+                const yil = lsGet(`marks_Annual_${cls}_${s.name}`, {})[name] || '';
+                const et = dtT[`${cls}_${s.name}_exam`] || '';
+                const rt = dtT[`${cls}_${s.name}_result`] || '';
+                const at = dtT[`${cls}_${s.name}_annual`] || '';
+                const hE = et ? checkAccess(et) : isAllowedForStudent(cls, s.name, s, name);
+                const hR = rt ? checkAccess(rt) : isAllowedForStudent(cls, s.name, s, name);
+                const hA = at ? checkAccess(at) : isAllowedForStudent(cls, s.name, s, name);
+                h += `<td style="${getGradeStyle(q1)}; padding:8px;">${hEsc(q1)}</td><td style="${getGradeStyle(q2)}; padding:8px;">${hEsc(q2)}</td><td style="${getGradeStyle(q3)}; padding:8px;">${hEsc(q3)}</td><td style="${getGradeStyle(q4)}; padding:8px;">${hEsc(q4)}</td>
+                      <td><input type="text" class="gi" style="${hE?getGradeStyle(imt):''} width:40px" ${!hE?'disabled':''} value="${hEsc(imt)}" onchange="saveExtra('${jEsc(cls)}','${jEsc(s.name)}','Imtihon', this.dataset.n, this.value)" data-n="${hEsc(name)}"></td>
+                      <td><input type="text" class="gi" style="${hR?getGradeStyle(nat):''} width:40px" ${!hR?'disabled':''} value="${hEsc(nat)}" onchange="saveExtra('${jEsc(cls)}','${jEsc(s.name)}','Natija', this.dataset.n, this.value)" data-n="${hEsc(name)}"></td>
+                      <td class="y-col"><input type="text" class="gi" style="${hA?getGradeStyle(yil):''} width:40px" ${!hA?'disabled':''} value="${hEsc(yil)}" onchange="saveY('marks_Annual_${jEsc(cls)}_${jEsc(s.name)}', this.dataset.n, this.value)" data-n="${hEsc(name)}"></td>`;
+            });
+            h += `</tr>`;
+        });
+        document.getElementById('report-area').innerHTML = h + `</tbody></table>`;
+        document.getElementById('report-title').innerText = `${cls}-sinf | Jami`;
+        document.getElementById('report-modal').style.display = 'block';
+    };
+
+    function closeReport() { document.getElementById('report-modal').style.display = 'none'; }
+
+    // ✅ MAVZULAR: __ts bilan saqlash
+    window.renderPlans = function() {
+        const cls = document.getElementById('c-select').value;
+        const sub = document.getElementById('s-select').value;
+        const classSubs = getClassSubjects(cls);
+        const subObj = classSubs.find(s => s.name === sub);
+        const dtT = lsGet('date_teachers', {});
+        const locks = lsGet('lock_settings', {})[cls] || {};
+        const dates = generateDates(cls, sub, activeQuarter);
+        const planKey = `plans_${activeQuarter}_${cls}_${sub}`;
+        const plans = lsGet(planKey, {});
+        const today = getTodayStr();
+
+        let h = `<div class="plans-container">`;
+        dates.forEach((d, i) => {
+            const isToday = d.date === today;
+            const dLocked = lockTrue(locks.dates?.[sub]?.[activeQuarter]?.[i]);
+            const st = dtT[`${cls}_${sub}_${activeQuarter}_d_${i}`] || '';
+            const canEdit = st ? checkAccess(st) : checkAccess(subObj?.teacher);
+            const ro = !canEdit || dLocked;
+            const dk = dateKey(d);
+            h += `<div class="lesson-card ${isToday?'is-today':''} ${dLocked?'locked':''}">
+                ${(canEdit && !dLocked) ? `<span class="delete-btn" onclick="clearPlan('${jEsc(planKey)}', '${jEsc(dk)}')">✕</span>` : ''}
+                <div style="display:flex; align-items:center;">
+                    <span class="date-label">${isToday?'📌 BUGUN: ':''}${hEsc(d.date)} (${d.instance+1}-dars)${dLocked?' 🔒':''}</span>
+                    <input type="text" class="note-inp" value="${hEsc(plans[dk]?.note||'')}" ${ro?'disabled':''} placeholder="Izoh" maxlength="5" onchange="updatePlan('${jEsc(planKey)}', '${jEsc(dk)}', 'note', this.value.toUpperCase())">
+                </div>
+                <div class="field-group"><label>MAVZU</label><input type="text" class="edit-inp" value="${hEsc(plans[dk]?.topic||'')}" ${ro?'disabled':''} onchange="updatePlan('${jEsc(planKey)}', '${jEsc(dk)}', 'topic', this.value)"></div>
+                <div class="field-group"><label>UYGA VAZIFA</label><input type="text" class="edit-inp" value="${hEsc(plans[dk]?.hw||'')}" ${ro?'disabled':''} onchange="updatePlan('${jEsc(planKey)}', '${jEsc(dk)}', 'hw', this.value)"></div>
+            </div>`;
+        });
+        document.getElementById('report-area').innerHTML = h + `</div>`;
+    };
+
+    window.openPlans = function() {
+        document.getElementById('report-title').innerText = "Mavzular Rejasi";
+        window.renderPlans();
+        document.getElementById('report-modal').style.display = 'block';
+    };
+
+    window.updatePlan = function(key, dk, field, val) {
+        const data = lsGet(key, {});
+        if (!data[dk]) data[dk] = { topic: '', hw: '', note: '' };
+        data[dk][field] = val;
+        data.__ts = Date.now();
+        lsSet(key, data);
+        window.savePlanToFirebase(key, data);
+        showSaved();
+    };
+
+    window.clearPlan = function(key, dk) {
+        if (!confirm("O'chirilsinmi?")) return;
+        const data = lsGet(key, {});
+        data[dk] = { topic: '', hw: '', note: '' };
+        data.__ts = Date.now();
+        lsSet(key, data);
+        window.savePlanToFirebase(key, data);
+        window.renderPlans();
+    };
+
+    function openSettingsModal() {
+        document.getElementById('settings-pass').value = "";
+        document.getElementById('pass-section').style.display = 'block';
+        document.getElementById('settings-body').style.display = 'none';
+        document.getElementById('swap-date').valueAsDate = new Date();
+        window.reloadClassSelects();
+        renderClassesList(); renderGradeColorsList();
+        loadClassTeacherData(); loadAdminStudentsList(); loadLockSettingsSubSelect();
+        document.getElementById('settings-modal').style.display = 'block';
+    }
+    function closeSettingsModal() {
+        document.getElementById('settings-modal').style.display = 'none';
+        updateSubjectsList(); render();
+    }
+    function verifySettingsPass() {
+        if (document.getElementById('settings-pass').value === "0000") {
+            document.getElementById('pass-section').style.display = 'none';
+            document.getElementById('settings-body').style.display = 'block';
+            renderClassesList(); renderGradeColorsList();
+            loadClassSettingsData(); loadAdminStudentsList(); loadLockSettingsSubSelect();
+        } else alert("Parol noto'g'ri!");
+    }
+
+    function renderClassesList() {
+        const classes = getClassesList();
+        const c = document.getElementById('classes-list-container');
+        if (!c) return;
+        let html = '';
+        classes.forEach((cl, i) => {
+            html += `<div style="display:flex; gap:8px; align-items:center; margin-bottom:6px; border-bottom:1px solid #f1f5f9; padding-bottom:4px;">
+                <span style="font-weight:bold; width:25px;">${i+1}.</span>
+                <input type="text" class="edit-inp" style="height:32px; max-width:200px;" value="${hEsc(cl)}" onchange="renameClass(${i}, this.value)">
+                <button class="tab-btn" style="background:#ef4444; color:white; border:none; padding:4px 8px; height:32px;" onclick="deleteClass(${i})">🗑️</button>
+            </div>`;
+        });
+        c.innerHTML = html;
+    }
+    function addNewClass() {
+        const inp = document.getElementById('new-class-name');
+        const n = inp.value.trim();
+        if (!n) return alert("Sinf nomini kiriting!");
+        const cs = getClassesList();
+        if (cs.includes(n)) return alert("Bu sinf bor!");
+        cs.push(n); saveClassesList(cs);
+        inp.value = ''; renderClassesList(); window.reloadClassSelects();
+    }
+    function renameClass(i, nn) {
+        nn = nn.trim();
+        if (!nn) { renderClassesList(); return; }
+        const cs = getClassesList();
+        const old = cs[i];
+        if (!old || old === nn) return;
+        if (cs.includes(nn)) { alert("Bu nom band!"); renderClassesList(); return; }
+
+        const sl = getStudentsListObj();
+        if (sl[old]) { sl[nn] = sl[old]; delete sl[old]; saveStudentsListObj(sl); }
+
+        const all = lsGet('class_subs_', {});
+        if (all[old]) { all[nn] = all[old]; delete all[old]; lsSet('class_subs_', all); }
+        const os = localStorage.getItem(`class_subs_${old}`);
+        if (os) { localStorage.setItem(`class_subs_${nn}`, os); localStorage.removeItem(`class_subs_${old}`); }
+
+        Object.keys(localStorage).forEach(k => {
+            if (k.startsWith(`groups_${old}_`)) {
+                const sub = k.substring(`groups_${old}_`.length);
+                const val = localStorage.getItem(k);
+                localStorage.setItem(`groups_${nn}_${sub}`, val);
+                localStorage.removeItem(k);
+            }
+        });
+
+        const osv = localStorage.getItem(`date_swaps_${old}`);
+        if (osv) { localStorage.setItem(`date_swaps_${nn}`, osv); localStorage.removeItem(`date_swaps_${old}`); window.syncDateSwapsToFirebase(nn, JSON.parse(osv)); }
+
+        Object.keys(localStorage).forEach(k => {
+            if ((k.startsWith('marks_') || k.startsWith('plans_')) && k.includes(`_${old}_`)) {
+                const nk = k.replace(`_${old}_`, `_${nn}_`);
+                localStorage.setItem(nk, localStorage.getItem(k));
+                localStorage.removeItem(k);
+                if (k.startsWith('marks_')) window.syncToFirebase(nk, JSON.parse(localStorage.getItem(nk)));
+                else window.savePlanToFirebase(nk, JSON.parse(localStorage.getItem(nk)));
+            }
+        });
+
+        cs[i] = nn; saveClassesList(cs); renderClassesList(); window.reloadClassSelects();
+    }
+    function deleteClass(i) {
+        const cs = getClassesList();
+        const n = cs[i];
+        if (!n) return;
+        if (!confirm(`"${n}" sinfini butunlay o'chirmoqchimisiz?`)) return;
+        const sl = getStudentsListObj(); delete sl[n]; saveStudentsListObj(sl);
+        const all = lsGet('class_subs_', {}); delete all[n]; lsSet('class_subs_', all);
+        localStorage.removeItem(`class_subs_${n}`);
+        Object.keys(localStorage).forEach(k => {
+            if (k.startsWith(`groups_${n}_`) || k === `date_swaps_${n}` ||
+                ((k.startsWith('marks_') || k.startsWith('plans_')) && k.includes(`_${n}_`))) {
+                localStorage.removeItem(k);
+            }
+        });
+        cs.splice(i, 1); saveClassesList(cs); renderClassesList(); window.reloadClassSelects();
+    }
+    function executeSwapClassOrder() {
+        const i1 = parseInt(document.getElementById('class-swap-1').value) - 1;
+        const i2 = parseInt(document.getElementById('class-swap-2').value) - 1;
+        const cs = getClassesList();
+        if (isNaN(i1) || isNaN(i2) || !cs[i1] || !cs[i2]) return alert("Raqam xato!");
+        const t = cs[i1]; cs[i1] = cs[i2]; cs[i2] = t;
+        saveClassesList(cs); renderClassesList(); window.reloadClassSelects();
+        alert("Almashtirildi!");
+    }
+
+    function loadAdminStudentsList() {
+        const cls = document.getElementById('admin-class-select').value;
+        if (!cls) return;
+        const sl = getStudentsListObj();
+        const students = sl[cls] || [];
+        const c = document.getElementById('admin-students-container');
+        const m = document.getElementById('move-student-select');
+        c.innerHTML = ''; m.innerHTML = '';
+        if (students.length === 0) { c.innerHTML = `<p style="color:#64748b; font-size:12px;">O'quvchilar yo'q.</p>`; return; }
+        let html = '';
+        students.forEach((name, i) => {
+            m.add(new Option(name, name));
+            html += `<div style="display:flex; gap:8px; align-items:center; margin-bottom:6px; border-bottom:1px solid #f1f5f9; padding-bottom:4px;">
+                <span style="font-weight:bold; width:25px;">${i+1}.</span>
+                <input type="text" class="edit-inp" style="height:32px; font-size:13px;" value="${hEsc(name)}" onchange="updateStudentNameInClass('${jEsc(cls)}', this.dataset.old, this.value)" data-old="${hEsc(name)}">
+                <button class="tab-btn" style="background:#ef4444; color:white; border:none; padding:4px 8px; height:32px;" onclick="deleteStudentFromClass('${jEsc(cls)}', this.dataset.n)" data-n="${hEsc(name)}">🗑️</button>
+            </div>`;
+        });
+        c.innerHTML = html;
+    }
+    function addNewStudentToClass() {
+        const cls = document.getElementById('admin-class-select').value;
+        const inp = document.getElementById('new-student-name');
+        const name = inp.value.trim();
+        if (!name) return alert("F.I.Sh kiriting!");
+        const sl = getStudentsListObj();
+        if (!sl[cls]) sl[cls] = [];
+        if (sl[cls].includes(name)) return alert("Bu o'quvchi bor!");
+        sl[cls].push(name); saveStudentsListObj(sl);
+        inp.value = ''; loadAdminStudentsList(); render();
+        alert("Qo'shildi!");
+    }
+    function updateStudentNameInClass(cls, oldName, newName) {
+        newName = newName.trim();
+        if (!newName || oldName === newName) { loadAdminStudentsList(); return; }
+        const sl = getStudentsListObj();
+        if (!sl[cls]) return;
+        const idx = sl[cls].indexOf(oldName);
+        if (idx === -1) return;
+        sl[cls][idx] = newName; saveStudentsListObj(sl);
+
+        Object.keys(localStorage).forEach(k => {
+            if ((k.startsWith('marks_') || k.startsWith('plans_')) && k.includes(`_${cls}_`)) {
+                const o = lsGet(k, {});
+                if (o[oldName] !== undefined) {
+                    o[newName] = o[oldName]; delete o[oldName];
+                    o.__ts = Date.now();
+                    lsSet(k, o);
+                    if (k.startsWith('marks_')) window.syncToFirebase(k, o);
+                    else window.savePlanToFirebase(k, o);
+                }
+            }
+        });
+        getClassSubjects(cls).forEach(s => {
+            const gk = `groups_${cls}_${s.name}`;
+            const gs = lsGet(gk, []);
+            let ch = false;
+            gs.forEach(g => {
+                if (g.students) {
+                    const i = g.students.indexOf(oldName);
+                    if (i >= 0) { g.students[i] = newName; ch = true; }
+                }
+            });
+            if (ch) { lsSet(gk, gs); window.syncGroupsToFirebase(cls, s.name, gs); }
+        });
+
+        loadAdminStudentsList(); render();
+    }
+    function deleteStudentFromClass(cls, name) {
+        if (!confirm(`"${name}" ni o'chirmoqchimisiz?`)) return;
+        const sl = getStudentsListObj();
+        if (!sl[cls]) return;
+        sl[cls] = sl[cls].filter(n => n !== name);
+        saveStudentsListObj(sl);
+
+        Object.keys(localStorage).forEach(k => {
+            if ((k.startsWith('marks_') || k.startsWith('plans_')) && k.includes(`_${cls}_`)) {
+                const o = lsGet(k, {});
+                if (o[name] !== undefined) {
+                    delete o[name]; o.__ts = Date.now(); lsSet(k, o);
+                    if (k.startsWith('marks_')) window.syncToFirebase(k, o);
+                    else window.savePlanToFirebase(k, o);
+                }
+            }
+        });
+        getClassSubjects(cls).forEach(s => {
+            const gk = `groups_${cls}_${s.name}`;
+            const gs = lsGet(gk, []);
+            let ch = false;
+            gs.forEach(g => {
+                if (g.students) {
+                    const before = g.students.length;
+                    g.students = g.students.filter(n => n !== name);
+                    if (g.students.length !== before) ch = true;
+                }
+            });
+            if (ch) { lsSet(gk, gs); window.syncGroupsToFirebase(cls, s.name, gs); }
+        });
+
+        loadAdminStudentsList(); render();
+    }
+    function executeMoveStudentToAnotherClass() {
+        const oldCls = document.getElementById('admin-class-select').value;
+        const newCls = document.getElementById('move-target-class-select').value;
+        const name = document.getElementById('move-student-select').value;
+        if (!oldCls || !newCls || !name) return alert("Ma'lumot to'liq emas!");
+        if (oldCls === newCls) return alert("Bir xil sinf!");
+        if (!confirm(`"${name}" ni ${oldCls} → ${newCls} ko'chirilsinmi?`)) return;
+        const sl = getStudentsListObj();
+        sl[oldCls] = (sl[oldCls] || []).filter(n => n !== name);
+        if (!sl[newCls]) sl[newCls] = [];
+        sl[newCls].push(name); saveStudentsListObj(sl);
+
+        Object.keys(localStorage).forEach(k => {
+            if ((k.startsWith('marks_') || k.startsWith('plans_')) && k.includes(`_${oldCls}_`)) {
+                const o = lsGet(k, {});
+                if (o[name] !== undefined) {
+                    const nk = k.replace(`_${oldCls}_`, `_${newCls}_`);
+                    const no = lsGet(nk, {});
+                    no[name] = o[name]; no.__ts = Date.now(); lsSet(nk, no);
+                    if (k.startsWith('marks_')) window.syncToFirebase(nk, no);
+                    else window.savePlanToFirebase(nk, no);
+                    delete o[name]; o.__ts = Date.now(); lsSet(k, o);
+                    if (k.startsWith('marks_')) window.syncToFirebase(k, o);
+                    else window.savePlanToFirebase(k, o);
+                }
+            }
+        });
+        getClassSubjects(oldCls).forEach(s => {
+            const gk = `groups_${oldCls}_${s.name}`;
+            const gs = lsGet(gk, []);
+            let ch = false;
+            gs.forEach(g => {
+                if (g.students) {
+                    const b = g.students.length;
+                    g.students = g.students.filter(n => n !== name);
+                    if (g.students.length !== b) ch = true;
+                }
+            });
+            if (ch) { lsSet(gk, gs); window.syncGroupsToFirebase(oldCls, s.name, gs); }
+        });
+        alert("Ko'chirildi!");
+        loadAdminStudentsList(); render();
+    }
+
+    function loadClassSettingsData() {
+        const cls = document.getElementById('swap-class-select').value;
+        const cs = getClassSubjects(cls);
+        const l = document.getElementById('class-subjects-list');
+        if (!l) return;
+        let html = '';
+        cs.forEach((s, i) => {
+            const days = (s.days || []).join(',');
+            html += `<div style="display:flex; gap:8px; margin-bottom:8px; align-items:center; flex-wrap:wrap;">
+                <span style="font-weight:bold; font-size:12px; min-width:20px;">${i+1}.</span>
+                <input type="text" class="edit-inp" style="width:130px;" value="${hEsc(s.name)}" onchange="updateClassSubField(${i}, 'name', this.value)">
+                <input type="text" class="edit-inp" style="width:160px;" value="${hEsc(s.teacher||'')}" placeholder="Ustoz" onchange="updateClassSubField(${i}, 'teacher', this.value)">
+                <input type="text" class="edit-inp" style="width:90px;" value="${hEsc(days)}" placeholder="Kunlar" onchange="updateClassSubDays(${i}, this.value)">
+                <button class="tab-btn" style="background:#ef4444; color:white; border:none; padding:4px 8px;" onclick="deleteClassSub(${i})">🗑️</button>
+            </div>`;
+        });
+        l.innerHTML = html;
+    }
+    function addNewClassSubject() {
+        const cls = document.getElementById('swap-class-select').value;
+        const name = document.getElementById('new-sub-name').value.trim();
+        const t = document.getElementById('new-sub-teacher').value.trim();
+        const di = document.getElementById('new-sub-days').value.trim();
+        if (!name) return alert("Fan nomini kiriting!");
+        let days = [1,3,5];
+        if (di) days = di.split(',').map(d => parseInt(d.trim())).filter(d => !isNaN(d));
+        const cs = getClassSubjects(cls);
+        cs.push({ name, teacher: t, days });
+        lsSet(`class_subs_${cls}`, cs);
+        window.syncClassSubsToFirebase(cls, cs);
+        document.getElementById('new-sub-name').value = '';
+        document.getElementById('new-sub-teacher').value = '';
+        document.getElementById('new-sub-days').value = '';
+        loadClassSettingsData(); updateSubjectsList();
+    }
+    function updateClassSubField(i, f, v) {
+        const cls = document.getElementById('swap-class-select').value;
+        const cs = getClassSubjects(cls);
+        cs[i][f] = v.trim();
+        lsSet(`class_subs_${cls}`, cs);
+        window.syncClassSubsToFirebase(cls, cs);
+    }
+    function updateClassSubDays(i, v) {
+        const cls = document.getElementById('swap-class-select').value;
+        const cs = getClassSubjects(cls);
+        cs[i].days = v.split(',').map(d => parseInt(d.trim())).filter(d => !isNaN(d));
+        lsSet(`class_subs_${cls}`, cs);
+        window.syncClassSubsToFirebase(cls, cs);
+    }
+    function deleteClassSub(i) {
+        if (!confirm("Fanni o'chirmoqchimisiz?")) return;
+        const cls = document.getElementById('swap-class-select').value;
+        const cs = getClassSubjects(cls);
+        cs.splice(i, 1);
+        lsSet(`class_subs_${cls}`, cs);
+        window.syncClassSubsToFirebase(cls, cs);
+        loadClassSettingsData(); updateSubjectsList();
+    }
+    function executeSwapSubjectOrder() {
+        const cls = document.getElementById('swap-class-select').value;
+        const i1 = parseInt(document.getElementById('swap-sub-idx-1').value) - 1;
+        const i2 = parseInt(document.getElementById('swap-sub-idx-2').value) - 1;
+        const cs = getClassSubjects(cls);
+        if (isNaN(i1) || isNaN(i2) || !cs[i1] || !cs[i2]) return alert("Raqam xato!");
+        const t = cs[i1]; cs[i1] = cs[i2]; cs[i2] = t;
+        lsSet(`class_subs_${cls}`, cs);
+        window.syncClassSubsToFirebase(cls, cs);
+        loadClassSettingsData(); updateSubjectsList(); render();
+        alert("Almashtirildi!");
+    }
+
+    function loadLockSettingsSubSelect() {
+        const cls = document.getElementById('lock-class-select').value;
+        if (!cls) return;
+        const cs = getClassSubjects(cls);
+        const s = document.getElementById('lock-sub-select');
+        s.innerHTML = '';
+        cs.forEach(c => s.add(new Option(c.name, c.name)));
+        loadLockSettingsData();
+    }
+    function loadLockSettingsData() {
+        const cls = document.getElementById('lock-class-select').value;
+        const sub = document.getElementById('lock-sub-select').value;
+        if (!cls || !sub) return;
+        loadLockCellsList(); loadLockDatesList();
+        const dt = lsGet('date_teachers', {});
+        document.getElementById('special-q1-teacher').value = dt[`${cls}_${sub}_Q1_quarter`] || dt[`${cls}_${sub}_quarter`] || '';
+        document.getElementById('special-q2-teacher').value = dt[`${cls}_${sub}_Q2_quarter`] || '';
+        document.getElementById('special-q3-teacher').value = dt[`${cls}_${sub}_Q3_quarter`] || '';
+        document.getElementById('special-q4-teacher').value = dt[`${cls}_${sub}_Q4_quarter`] || '';
+        document.getElementById('special-exam-teacher').value = dt[`${cls}_${sub}_exam`] || '';
+        document.getElementById('special-result-teacher').value = dt[`${cls}_${sub}_result`] || '';
+        document.getElementById('special-annual-teacher').value = dt[`${cls}_${sub}_annual`] || '';
+    }
+    function loadLockCellsList() {
+        const cls = document.getElementById('lock-class-select').value;
+        const sub = document.getElementById('lock-sub-select').value;
+        const q = document.getElementById('lock-cell-q-select').value;
+        if (!cls || !sub) return;
+        const sl = getStudentsListObj();
+        const students = (sl[cls] || []).slice().sort((a,b)=>a.localeCompare(b,'uz'));
+        const dates = generateDates(cls, sub, q);
+        const locks = lsGet('lock_settings', {})[cls] || {};
+        const div = document.getElementById('lock-cells-students-list');
+        div.innerHTML = '';
+        students.forEach(name => {
+            const box = document.createElement('div');
+            box.style.cssText = 'margin-bottom:8px; border-bottom:1px solid #f1f5f9; padding-bottom:5px;';
+            let html = `<div style="font-size:12px; font-weight:bold; color:#1e293b; margin-bottom:3px;">${hEsc(name)}</div><div style="display:flex; gap:4px; flex-wrap:wrap;">`;
+            dates.forEach((d, di) => {
+                const chk = lockTrue(locks.cells?.[name]?.[sub]?.[q]?.[di]) ? 'checked' : '';
+                html += `<label style="font-size:10px; background:#f8fafc; border:1px solid #cbd5e1; padding:2px 5px; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:2px;"><input type="checkbox" ${chk} onchange="toggleCellLock('${jEsc(cls)}','${jEsc(sub)}','${jEsc(q)}', this.dataset.n, ${di}, this.checked)" data-n="${hEsc(name)}"><span>${hEsc(d.date)}(${d.instance+1})</span></label>`;
+            });
+            const qChk = lockTrue(locks.cells?.[name]?.[sub]?.[q]?.['__quarter']) ? 'checked' : '';
+            html += `<label style="font-size:10px; background:#eef2ff; border:1px solid #4361ee; padding:2px 5px; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:2px; font-weight:bold; color:#4361ee;"><input type="checkbox" ${qChk} onchange="toggleCellLock('${jEsc(cls)}','${jEsc(sub)}','${jEsc(q)}', this.dataset.n, '__quarter', this.checked)" data-n="${hEsc(name)}"><span>Chorak</span></label>`;
+            html += `</div>`;
+            box.innerHTML = html;
+            div.appendChild(box);
+        });
+    }
+    function toggleCellLock(cls, sub, q, name, cellIdx, isChecked) {
+        const all = lsGet('lock_settings', {});
+        if (!all[cls]) all[cls] = { dates: {}, cells: {} };
+        if (!all[cls].cells) all[cls].cells = {};
+        if (!all[cls].cells[name]) all[cls].cells[name] = {};
+        if (!all[cls].cells[name][sub]) all[cls].cells[name][sub] = {};
+        if (!all[cls].cells[name][sub][q]) all[cls].cells[name][sub][q] = {};
+        all[cls].cells[name][sub][q][cellIdx] = isChecked;
+        lsSet('lock_settings', all);
+        window.syncLockSettingsToFirebase(all);
+        render();
+    }
+    function loadLockDatesList() {
+        const cls = document.getElementById('lock-class-select').value;
+        const sub = document.getElementById('lock-sub-select').value;
+        const q = document.getElementById('lock-q-select').value;
+        if (!cls || !sub) return;
+        const dates = generateDates(cls, sub, q);
+        const locks = lsGet('lock_settings', {})[cls] || {};
+        const dt = lsGet('date_teachers', {});
+        const div = document.getElementById('lock-dates-list');
+        let html = '';
+        dates.forEach((d, i) => {
+            const chk = lockTrue(locks.dates?.[sub]?.[q]?.[i]) ? 'checked' : '';
+            const tv = dt[`${cls}_${sub}_${q}_d_${i}`] || '';
+            html += `<div style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:5px; border-bottom:1px solid #f1f5f9; padding-bottom:4px;">
+                <label style="cursor:pointer; display:flex; align-items:center; gap:4px; min-width:90px;"><input type="checkbox" ${chk} onchange="toggleDateLock('${jEsc(cls)}','${jEsc(sub)}','${jEsc(q)}', ${i}, this.checked)"><span>${hEsc(d.date)} (${d.instance+1})</span></label>
+                <input type="text" class="edit-inp" style="height:26px; font-size:11px; padding:2px;" placeholder="Ustoz" value="${hEsc(tv)}" onchange="saveDateTeacher('${jEsc(cls)}','${jEsc(sub)}','${jEsc(q)}', ${i}, this.value)">
+            </div>`;
+        });
+        div.innerHTML = html;
+    }
+    function toggleDateLock(cls, sub, q, i, c) {
+        const all = lsGet('lock_settings', {});
+        if (!all[cls]) all[cls] = { dates: {}, cells: {} };
+        if (!all[cls].dates) all[cls].dates = {};
+        if (!all[cls].dates[sub]) all[cls].dates[sub] = {};
+        if (!all[cls].dates[sub][q]) all[cls].dates[sub][q] = {};
+        all[cls].dates[sub][q][i] = c;
+        lsSet('lock_settings', all);
+        window.syncLockSettingsToFirebase(all);
+        render();
+    }
+    function saveDateTeacher(cls, sub, q, i, t) {
+        const dt = lsGet('date_teachers', {});
+        const k = `${cls}_${sub}_${q}_d_${i}`;
+        if (t.trim()) dt[k] = t.trim(); else delete dt[k];
+        lsSet('date_teachers', dt);
+        window.syncDateTeachersToFirebase(dt);
+        render();
+    }
+    function saveSpecialColumnTeachers() {
+        const cls = document.getElementById('lock-class-select').value;
+        const sub = document.getElementById('lock-sub-select').value;
+        const v = {
+            Q1: document.getElementById('special-q1-teacher').value.trim(),
+            Q2: document.getElementById('special-q2-teacher').value.trim(),
+            Q3: document.getElementById('special-q3-teacher').value.trim(),
+            Q4: document.getElementById('special-q4-teacher').value.trim(),
+            exam: document.getElementById('special-exam-teacher').value.trim(),
+            result: document.getElementById('special-result-teacher').value.trim(),
+            annual: document.getElementById('special-annual-teacher').value.trim()
+        };
+        const dt = lsGet('date_teachers', {});
+        ['Q1','Q2','Q3','Q4'].forEach(q => {
+            if (v[q]) dt[`${cls}_${sub}_${q}_quarter`] = v[q]; else delete dt[`${cls}_${sub}_${q}_quarter`];
+        });
+        if (v.exam) dt[`${cls}_${sub}_exam`] = v.exam; else delete dt[`${cls}_${sub}_exam`];
+        if (v.result) dt[`${cls}_${sub}_result`] = v.result; else delete dt[`${cls}_${sub}_result`];
+        if (v.annual) dt[`${cls}_${sub}_annual`] = v.annual; else delete dt[`${cls}_${sub}_annual`];
+        lsSet('date_teachers', dt);
+        window.syncDateTeachersToFirebase(dt);
+        alert("Saqlandi!");
+    }
+
+    function openGroupsModal() {
+        const cls = document.getElementById('c-select').value;
+        const sub = document.getElementById('s-select').value;
+        document.getElementById('groups-title').innerText = `${cls}-sinf, ${sub}`;
+        renderGroupsList();
+        document.getElementById('groups-modal').style.display = 'block';
+    }
+    function closeGroupsModal() {
+        document.getElementById('groups-modal').style.display = 'none';
+        updateGroupSelect(); render();
+    }
+    function renderGroupsList() {
+        const cls = document.getElementById('c-select').value;
+        const sub = document.getElementById('s-select').value;
+        const sl = getStudentsListObj();
+        const students = (sl[cls] || []).slice().sort((a,b)=>a.localeCompare(b,'uz'));
+        const groups = lsGet(`groups_${cls}_${sub}`, []);
+        const cs = getClassSubjects(cls);
+        const subObj = cs.find(s => s.name === sub);
+        const hasMain = checkAccess(subObj?.teacher);
+        const addBtn = document.getElementById('add-group-btn');
+        if (addBtn) addBtn.style.display = hasMain ? 'inline-block' : 'none';
+        const area = document.getElementById('groups-area');
+        area.innerHTML = '';
+        if (groups.length === 0) { area.innerHTML = `<p style='grid-column:1/-1; text-align:center; color:#65676b;'>Guruhlar yo'q.</p>`; return; }
+        groups.forEach((g, gi) => {
+            const card = document.createElement('div');
+            card.className = 'group-card';
+            const ro = !hasMain ? 'disabled' : '';
+            const hideDel = !hasMain ? 'display:none;' : '';
+            let html = `<h4>
+                <input type="text" class="edit-inp" ${ro} style="font-weight:bold; font-size:14px; padding:4px; width:75%;" value="${hEsc(g.name||'')}" onchange="renameGroup(${gi}, this.value)">
+                <span style="color:#ef4444; cursor:pointer; font-size:14px; ${hideDel}" onclick="deleteGroup(${gi})">🗑️</span>
+            </h4>
+            <div style="margin-top:8px;">
+                <label style="font-size:11px; font-weight:bold; color:#65676b;">GURUH USTOZI:</label>
+                <input type="text" class="edit-inp" ${ro} style="font-size:12px; padding:4px; margin-top:3px;" placeholder="Ustoz ismi..." value="${hEsc(g.teacher||'')}" onchange="assignTeacherToGroup(${gi}, this.value)">
+            </div>
+            <div class="student-check-list">`;
+            students.forEach(name => {
+                const chk = g.students && g.students.includes(name) ? 'checked' : '';
+                html += `<label class="student-check-item"><input type="checkbox" ${chk} ${ro} onchange="toggleStudentInGroup(${gi}, this.dataset.n, this.checked)" data-n="${hEsc(name)}"><span>${hEsc(name)}</span></label>`;
+            });
+            html += `</div>`;
+            card.innerHTML = html;
+            area.appendChild(card);
+        });
+    }
+    function addNewGroup() {
+        const cls = document.getElementById('c-select').value;
+        const sub = document.getElementById('s-select').value;
+        const cs = getClassSubjects(cls);
+        const subObj = cs.find(s => s.name === sub);
+        if (!checkAccess(subObj?.teacher)) return alert("Ruxsat yo'q!");
+        const gs = lsGet(`groups_${cls}_${sub}`, []);
+        gs.push({ name: (gs.length+1) + '-guruh', teacher: '', students: [] });
+        lsSet(`groups_${cls}_${sub}`, gs);
+        window.syncGroupsToFirebase(cls, sub, gs);
+        renderGroupsList();
+    }
+    function renameGroup(gi, nn) {
+        if (!nn.trim()) return;
+        const cls = document.getElementById('c-select').value;
+        const sub = document.getElementById('s-select').value;
+        const gs = lsGet(`groups_${cls}_${sub}`, []);
+        gs[gi].name = nn.trim();
+        lsSet(`groups_${cls}_${sub}`, gs);
+        window.syncGroupsToFirebase(cls, sub, gs);
+    }
+    function assignTeacherToGroup(gi, t) {
+        const cls = document.getElementById('c-select').value;
+        const sub = document.getElementById('s-select').value;
+        const gs = lsGet(`groups_${cls}_${sub}`, []);
+        gs[gi].teacher = t.trim();
+        lsSet(`groups_${cls}_${sub}`, gs);
+        window.syncGroupsToFirebase(cls, sub, gs);
+    }
+    function deleteGroup(gi) {
+        const cls = document.getElementById('c-select').value;
+        const sub = document.getElementById('s-select').value;
+        const cs = getClassSubjects(cls);
+        const subObj = cs.find(s => s.name === sub);
+        if (!checkAccess(subObj?.teacher)) return alert("Ruxsat yo'q!");
+        if (!confirm("Guruhni o'chirmoqchimisiz?")) return;
+        const gs = lsGet(`groups_${cls}_${sub}`, []);
+        gs.splice(gi, 1);
+        lsSet(`groups_${cls}_${sub}`, gs);
+        window.syncGroupsToFirebase(cls, sub, gs);
+        renderGroupsList();
+    }
+    function toggleStudentInGroup(gi, name, chk) {
+        const cls = document.getElementById('c-select').value;
+        const sub = document.getElementById('s-select').value;
+        const gs = lsGet(`groups_${cls}_${sub}`, []);
+        if (!gs[gi].students) gs[gi].students = [];
+        if (chk) { if (!gs[gi].students.includes(name)) gs[gi].students.push(name); }
+        else gs[gi].students = gs[gi].students.filter(n => n !== name);
+        lsSet(`groups_${cls}_${sub}`, gs);
+        window.syncGroupsToFirebase(cls, sub, gs);
+    }
+
+    /* ================= GLOBAL YANGILASH ================= */
+    window.fullRefresh = () => {
+        try {
+            updateGroupSelect();
+            const ae = document.activeElement;
+            const isEditingCell = ae && ae.classList && ae.classList.contains('gi') && ae.closest && ae.closest('#table-area');
+            if (!isEditingCell) {
+                render();
+            } else {
+                if (window.__pendingRefresh) clearTimeout(window.__pendingRefresh);
+                window.__pendingRefresh = setTimeout(() => {
+                    try { render(); } catch(e) { console.error(e); }
+                }, 800);
+            }
+            const cls = document.getElementById('c-select')?.value;
+            if (cls) updateClassTeacherDisplay(cls);
+            const gc = document.getElementById('grade-colors-list');
+            if (gc && document.getElementById('settings-body')?.style.display === 'block') {
+                renderGradeColorsList();
+            }
+            const settingsBody = document.getElementById('settings-body');
+            if (settingsBody && settingsBody.style.display === 'block') {
+                const active = document.activeElement;
+                const inLockArea = active && (active.closest && (active.closest('#lock-cells-students-list') || active.closest('#lock-dates-list')));
+                if (!inLockArea) {
+                    loadLockCellsList();
+                    loadLockDatesList();
+                }
+            }
+        } catch(e) { console.error(e); }
+    };
+</script>
+</body>
+</html>
