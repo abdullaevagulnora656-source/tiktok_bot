@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <title>Professional Admin Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+        import { getDatabase, ref, set, onValue, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDafsnHRJpk5cM9eXvTWfwuQy1QOgBJ0TA",
+            authDomain: "ilovalarim-944d0.firebaseapp.com",
+            databaseURL: "https://ilovalarim-944d0-default-rtdb.firebaseio.com",
+            projectId: "ilovalarim-944d0",
+            storageBucket: "ilovalarim-944d0.firebasestorage.app",
+            messagingSenderId: "120782588271",
+            appId: "1:120782588271:web:161269f048b218c52bc09a"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // Global sozlamalar obyekti (Birlamchi)
+        window.dbSettings = {
+            password: "1234",
+            showCoords: true,
+            highlightCell: true,
+            tableWidth: "100%",
+            globalZoom: 1, 
+            positions: {
+                adminMenuBlock: { top: "20px", left: "20px" },
+                tableSectionBlock: { top: "20px", left: "500px" }
+            },
+            menuVisibility: {
+                rowBtn: true, colBtn: true, editBtn: true, clearBtn: true, excelBtn: true, zoomBtn: true, announceBtn: true, ssBtn: true, hideToggleBtn: true
+            }
+        };
+
+        // Firebase ma'lumotlarini real-time yangilash funksiyasi
+        window.updateTableDataInFirebase = () => {
+            set(ref(db, 'jadvalData'), document.getElementById("myTable").innerHTML);
+        };
+
+        // Firebase-dan sozlamalarni yuklash va real-time qo'llash
+        onValue(ref(db, 'dashboardSettings'), (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                window.dbSettings = data;
+                applyMenuVisibility();
+                applyTableHighlight();
+                applySavedPositions(); // Joylashuv real-time o'zgarishi uchun shu yerda ham chaqiriladi
+                applyTableWidth();
+                applyGlobalZoom(); 
+            }
+        });
+
+        onValue(ref(db, 'screenshotPermission'), (snapshot) => {
+            const btn = document.getElementById("ssBtn");
+            if (snapshot.val()) {
+                btn.disabled = false;
+                btn.style.background = "#f1c40f";
+                btn.innerText = "Skrinshot olish";
+            } else {
+                btn.disabled = true;
+                btn.style.background = "#bdc3c7";
+                btn.innerText = "Skrinshot (Yopiq)";
+            }
+        });
+
+        onValue(ref(db, 'jadvalData'), (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                document.getElementById("myTable").innerHTML = data;
+                applyTableHighlight();
+                initResizeEvents(); 
+            }
+        });
+
+        window.saveToFirebase = () => {
+            if (!checkAuth()) return alert("Kod xato!");
+            window.updateTableDataInFirebase();
+            alert("Muvaffaqiyatli saqlandi!");
+        };
+
+        window.toggleScreenshot = async () => {
+            if (!checkAuth()) return alert("Kod xato!");
+            const rRef = ref(db, 'screenshotPermission');
+            const snap = await get(rRef);
+            set(rRef, !snap.val());
+        };
+
+        window.saveSettingsToFirebase = () => {
+            set(ref(db, 'dashboardSettings'), window.dbSettings);
+        };
+
+        // E'lonlar bo'limi
+        onValue(ref(db, 'announcements'), (snapshot) => {
+            const data = snapshot.val() || {};
+            renderAnnouncements(data);
+            renderPublicAnnouncements(data);
+        });
+
+        window.firebaseAddAnnouncement = (id, text, durationSeconds) => {
+            const expiresAt = Date.now() + (durationSeconds * 1000);
+            set(ref(db, `announcements/${id}`), { text, expiresAt });
+        };
+
+        window.firebaseDeleteAnnouncement = (id) => set(ref(db, `announcements/${id}`), null);
+        
+        window.firebaseUpdateAnnouncement = (id, newText, newExpiresAt) => {
+            set(ref(db, `announcements/${id}`), { text: newText, expiresAt: newExpiresAt });
+        };
+    </script>
+
+    <style>
+        body { font-family: sans-serif; background-color: #f5f6fa; margin: 0; padding: 20px; overflow-x: hidden; }
+        
+        .admin-menu { 
+            position: absolute; z-index: 100; background: #2c3e50; color: white; 
+            padding: 15px; border-radius: 8px; width: 460px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); 
+        }
+        .table-section { 
+            position: absolute; z-index: 90; background: white; padding: 15px; 
+            border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); min-width: 600px;
+        }
+        
+        .drag-handle { 
+            background: #34495e; padding: 8px; margin: -15px -15px 15px -15px; 
+            border-top-left-radius: 8px; border-top-right-radius: 8px; 
+            cursor: move; font-size: 12px; text-align: center; color: #bdc3c7; font-weight: bold;
+            user-select: none;
+        }
+        .table-section .drag-handle { margin: -15px -15px 15px -15px; background: #7f8c8d; color: white; }
+
+        .settings-panel { background: #34495e; padding: 15px; border-radius: 6px; margin-top: 15px; display: none; }
+        .settings-panel label { display: block; margin: 5px 0; font-size: 14px; cursor: pointer; }
+        
+        table { border-collapse: collapse; width: 100%; margin-top: 10px; background: white; transform-origin: top left; table-layout: fixed; }
+        th, td { border: 2px solid #34495e; padding: 15px; text-align: center; position: relative; word-wrap: break-word; }
+        button { padding: 10px; cursor: pointer; border: none; border-radius: 5px; color: white; margin: 2px; font-weight: bold; }
+        
+        #adminCode { padding: 8px; width: 100px; border-radius: 5px; border: 1px solid #bdc3c7; font-weight: bold; text-align: center; }
+
+        .admin-announcement-list { background: #34495e; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #7f8c8d; }
+        .admin-announcement-item { background: #2c3e50; padding: 8px; border-radius: 4px; margin-bottom: 5px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+
+        .public-announcement-bar { background: #e74c3c; color: white; padding: 8px 12px; border-radius: 6px; margin-bottom: 10px; font-weight: bold; font-size: 14px; display: none; overflow: hidden; white-space: nowrap; box-shadow: 0 2px 8px rgba(231, 76, 60, 0.4); }
+        .public-announcement-bar marquee { vertical-align: middle; }
+
+        #coordsIndicator { background: #ecf0f1; padding: 8px; border-radius: 4px; display: inline-block; margin-bottom: 10px; font-weight: bold; color: #2c3e50; border-left: 5px solid #2980b9; }
+        
+        .public-toolbar { background: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 10px; border: 1px dashed #bdc3c7; }
+        .public-toolbar h4 { margin: 0 0 8px 0; font-size: 13px; color: #7f8c8d; text-transform: uppercase; }
+
+        table.enable-highlight td:hover, table.enable-highlight th:hover {
+            outline: 3px solid #f1c40f !important;
+            box-shadow: inset 0 0 15px rgba(241, 196, 15, 0.8) !important;
+            background-color: rgba(241, 196, 15, 0.2) !important;
+            z-index: 5;
+            transition: all 0.1s ease;
+        }
+
+        .picker-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.4); z-index: 10000; display: flex;
+            justify-content: center; align-items: center;
+        }
+        .picker-box {
+            background: white; padding: 20px; border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3); text-align: center; width: 320px; color: #2c3e50;
+        }
+        .picker-box input[type="text"], .picker-box input[type="date"], .picker-box input[type="time"] {
+            padding: 10px; font-size: 16px; margin-bottom: 15px; width: 90%; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;
+        }
+        .picker-box .color-section { margin: 10px 0; text-align: left; background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px dashed #bdc3c7; }
+        .picker-box .color-section label { font-weight: bold; font-size: 13px; display: block; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="admin-menu" id="adminMenuBlock" style="top: 20px; left: 20px;">
+    <div class="drag-handle" id="adminHandle">☰ USHLAB SURISH (ADMIN PANEL)</div>
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px;">
+        <h2 style="margin: 0; font-size: 18px;">Boshqaruv</h2>
+        <input type="password" id="adminCode" placeholder="Parol">
+        <button onclick="toggleMenuCollapse()" style="background:#e67e22; margin: 0;" id="hideMenuBtn">Berkitish</button>
+    </div>
+    
+    <div id="menuControls">
+        <button onclick="toggleSettingsPanel()" style="background:#7f8c8d">Kengaytirilgan Sozlamalar</button>
+        <hr>
+        
+        <span id="group-rowBtn">
+            <button onclick="addRow()" style="background:#2980b9">+ Qator</button>
+            <button onclick="delRow()" style="background:#c0392b">- Qator</button>
+        </span>
+        <span id="group-colBtn">
+            <button onclick="addCol()" style="background:#2980b9">+ Ustun</button>
+            <button onclick="delCol()" style="background:#c0392b">- Ustun</button>
+        </span>
+        <button id="btn-editBtn" onclick="editCell()" style="background:#f39c12">Tahrirlash</button>
+        <button id="btn-clearBtn" onclick="clearCell()" style="background:#d35400">Tozalash</button>
+        <button id="btn-excelBtn" onclick="exportExcel()" style="background:#8e44ad">Excel</button>
+        <button id="btn-ssBtn" onclick="toggleScreenshot()" style="background:#16a085">Skrinshot ruxsati</button>
+        <button id="btn-announceBtn" onclick="postAnnouncement()" style="background:#f39c12">E'lon yuborish</button>
+        <button class="save-btn" style="background:#27ae60" onclick="saveToFirebase()">Saqlash</button>
+        
+        <div>
+            <br>
+            <span style="font-size: 12px; color: #f1c40f; font-weight: bold;">ADMIN GLOBAL ZOOM (HAMMADA):</span><br>
+            <button onclick="adminGlobalZoom(1.1)" style="background:#e74c3c; border:1px solid #fff">Global Zoom (+)</button>
+            <button onclick="adminGlobalZoom(0.9)" style="background:#e74c3c; border:1px solid #fff">Global Zoom (-)</button>
+        </div>
+
+        <div class="admin-announcement-list" id="adminAnnounceBlock">
+            <h4 style="margin: 0 0 8px 0; color: #f1c40f; font-size: 14px;">📢 Faol E'lonlar va Qolgan Vaqt:</h4>
+            <div id="adminAnnounceItems"><i>Hozircha faol e'lonlar yo'q</i></div>
+        </div>
+
+        <div class="settings-panel" id="settingsPanel">
+            <h3>Tizim Sozlamalari</h3>
+            <button onclick="changeAdminPassword()" style="background:#e74c3c">Parolni O'zgartirish</button>
+            <button onclick="resetPositions()" style="background:#e67e22; width: 100%; margin-top: 5px;">Joylashuvni tiklash (Yonma-yon)</button>
+            <button onclick="changeTableWidth()" style="background:#2980b9; width: 100%; margin-top: 5px;">Jadval kengligini o'zgartirish</button>
+            <hr>
+            <label><input type="checkbox" id="chkCoords" onchange="settingToggleCoords(this.checked)"> Katak koordinatalarini ko'rsatish</label>
+            <label><input type="checkbox" id="chkHighlight" onchange="settingToggleHighlight(this.checked)"> Katakni chiroq bilan belgilash</label>
+            <hr>
+            <h4>Menyu tugmalari ko'rinishi (Odamlarda):</h4>
+            <label><input type="checkbox" id="chk-hideToggleBtn" onchange="settingToggleMenu('hideToggleBtn', this.checked)"> Panelni berkitish/ochish tugmasi</label>
+            <label><input type="checkbox" id="chk-rowBtn" onchange="settingToggleMenu('rowBtn', this.checked)"> Qator boshqaruvi</label>
+            <label><input type="checkbox" id="chk-colBtn" onchange="settingToggleMenu('colBtn', this.checked)"> Ustun boshqaruvi</label>
+            <label><input type="checkbox" id="chk-editBtn" onchange="settingToggleMenu('editBtn', this.checked)"> Tahrirlash tugmasi</label>
+            <label><input type="checkbox" id="chk-clearBtn" onchange="settingToggleMenu('clearBtn', this.checked)"> Tozalash tugmasi</label>
+            <label><input type="checkbox" id="chk-excelBtn" onchange="settingToggleMenu('excelBtn', this.checked)"> Excel tugmasi</label>
+            <label><input type="checkbox" id="chk-zoomBtn" onchange="settingToggleMenu('zoomBtn', this.checked)"> Zoom tugmalari</label>
+            <label><input type="checkbox" id="chk-announceBtn" onchange="settingToggleMenu('announceBtn', this.checked)"> E'lon yuborish</label>
+        </div>
+    </div>
+</div>
+
+<div class="table-section" id="tableSectionBlock" style="top: 20px; left: 500px;">
+    <div class="drag-handle" id="tableHandle">☰ USHLAB SURISH (JADVAL PANELI)</div>
+    
+    <div class="public-announcement-bar" id="publicAnnouncementBar">
+        📢 <marquee id="publicAnnounceMarquee" scrollamount="5">Hozircha faol e'lonlar yo'q</marquee>
+    </div>
+
+    <div id="coordsIndicator">Kursor katak ustida emas</div>
+
+    <div class="public-toolbar" id="publicToolbar">
+        <h4>Foydalanuvchilar paneli (Odamlarga ochiq amallar)</h4>
+        <span id="public-rowBtn" style="display:none;">
+            <button onclick="addRow()" style="background:#2980b9">+ Qator</button>
+            <button onclick="delRow()" style="background:#c0392b">- Qator</button>
+        </span>
+        <span id="public-colBtn" style="display:none;">
+            <button onclick="addCol()" style="background:#2980b9">+ Ustun</button>
+            <button onclick="delCol()" style="background:#c0392b">- Ustun</button>
+        </span>
+        <button id="public-editBtn" onclick="editCell()" style="background:#f39c12; display:none;">Tahrirlash</button>
+        <button id="public-clearBtn" onclick="clearCell()" style="background:#d35400; display:none;">Tozalash</button>
+        <button id="public-excelBtn" onclick="exportExcel()" style="background:#8e44ad; display:none;">Excel</button>
+        
+        <span id="public-zoomBtn" style="display:none;">
+            <button onclick="localZoom(1.1)" style="background:#34495e; border:1px solid #ccc">Lokal Zoom (+)</button>
+            <button onclick="localZoom(0.9)" style="background:#34495e; border:1px solid #ccc">Lokal Zoom (-)</button>
+        </span>
+        
+        <button id="public-announceBtn" onclick="postAnnouncement()" style="background:#f39c12; display:none;">E'lon yuborish</button>
+        <button id="ssBtn" onclick="takeScreenshot()" style="color:black; background:#bdc3c7;" disabled>Skrinshot (Yopiq)</button>
+    </div>
+
+    <div style="overflow: auto; width: 100%;">
+        <table id="myTable">
+            <tr id="headerRow">
+                <th style="width: 150px;" data-type="text">Mahalla</th>
+                <th style="width: 150px;" data-type="time">Vaqt</th>
+            </tr>
+            <tr>
+                <td draggable="true" ondragstart="drag(event)" ondrop="drop(event)" ondragover="allowDrop(event)">Matn 1</td>
+                <td draggable="true" ondragstart="drag(event)" ondrop="drop(event)" ondragover="allowDrop(event)">12:00:00</td>
+            </tr>
+        </table>
+    </div>
+</div>
+
+<script>
+    function checkAuth() { 
+        return document.getElementById("adminCode").value === window.dbSettings.password; 
+    }
+
+    // ZOOM TIZIMI
+    let localCurrentZoom = 1; 
+
+    function adminGlobalZoom(f) {
+        if (!checkAuth()) return alert("Global zoomni faqat admin paroli bilan o'zgartirish mumkin!");
+        let currentGZoom = window.dbSettings.globalZoom || 1;
+        currentGZoom *= f;
+        if(currentGZoom < 0.5) currentGZoom = 0.5;
+        if(currentGZoom > 2.0) currentGZoom = 2.0;
+        
+        window.dbSettings.globalZoom = currentGZoom;
+        applyGlobalZoom();
+        window.saveSettingsToFirebase(); 
+    }
+
+    function applyGlobalZoom() {
+        let gZoom = window.dbSettings.globalZoom || 1;
+        document.getElementById("myTable").style.zoom = gZoom * localCurrentZoom;
+    }
+
+    function localZoom(f) {
+        localCurrentZoom *= f;
+        if(localCurrentZoom < 0.5) localCurrentZoom = 0.5;
+        if(localCurrentZoom > 2.0) localCurrentZoom = 2.0;
+        
+        applyGlobalZoom(); 
+    }
+
+    // RESIZE EVENTS
+    let isResizing = false;
+    let resizeType = ''; 
+    let resizeCell = null;
+    let startX, startY, startWidth, startHeight;
+
+    function initResizeEvents() {
+        const table = document.getElementById("myTable");
+        table.removeEventListener('mousemove', handleMouseMove);
+        table.removeEventListener('mousedown', handleMouseDown);
+        table.addEventListener('mousemove', handleMouseMove);
+        table.addEventListener('mousedown', handleMouseDown);
+    }
+
+    function handleMouseMove(e) {
+        if (isResizing) return;
+        let cell = e.target;
+        if (cell.tagName === 'TD' || cell.tagName === 'TH') {
+            const rect = cell.getBoundingClientRect();
+            const nextToRight = (rect.right - e.clientX) < 10;
+            const nextToBottom = (rect.bottom - e.clientY) < 10;
+
+            if (nextToRight) {
+                cell.style.cursor = 'col-resize';
+            } else if (nextToBottom) {
+                cell.style.cursor = 'row-resize';
+            } else {
+                cell.style.cursor = cell.getAttribute('draggable') === 'true' ? 'move' : 'default';
+            }
+        }
+    }
+
+    function handleMouseDown(e) {
+        let cell = e.target;
+        if (cell.tagName === 'TD' || cell.tagName === 'TH') {
+            const rect = cell.getBoundingClientRect();
+            const nextToRight = (rect.right - e.clientX) < 10;
+            const nextToBottom = (rect.bottom - e.clientY) < 10;
+
+            if (nextToRight || nextToBottom) {
+                e.preventDefault();
+                isResizing = true;
+                startX = e.clientX;
+                startY = e.clientY;
+
+                if (nextToRight) {
+                    resizeType = 'col';
+                    let colIndex = cell.cellIndex;
+                    let headerCell = document.getElementById("myTable").rows[0].cells[colIndex];
+                    resizeCell = headerCell || cell;
+                    startWidth = resizeCell.offsetWidth;
+                } else {
+                    resizeType = 'row';
+                    resizeCell = cell.parentNode;
+                    startHeight = resizeCell.offsetHeight;
+                }
+
+                document.addEventListener('mousemove', doResize);
+                document.addEventListener('mouseup', stopResize);
+            }
+        }
+    }
+
+    function doResize(e) {
+        if (!isResizing) return;
+        if (resizeType === 'col') {
+            const width = startWidth + (e.clientX - startX);
+            if (width > 40) {
+                resizeCell.style.width = width + 'px';
+                resizeCell.style.minWidth = width + 'px';
+            }
+        } else if (resizeType === 'row') {
+            const height = startHeight + (e.clientY - startY);
+            if (height > 25) {
+                resizeCell.style.height = height + 'px';
+            }
+        }
+    }
+
+    function stopResize() {
+        if (isResizing) {
+            isResizing = false;
+            document.removeEventListener('mousemove', doResize);
+            document.removeEventListener('mouseup', stopResize);
+            window.updateTableDataInFirebase();
+        }
+    }
+
+    function applySavedPositions() {
+        if (window.dbSettings.positions) {
+            const admin = window.dbSettings.positions.adminMenuBlock;
+            const table = window.dbSettings.positions.tableSectionBlock;
+            
+            if (admin) {
+                document.getElementById("adminMenuBlock").style.top = admin.top;
+                document.getElementById("adminMenuBlock").style.left = admin.left;
+            }
+            if (table) {
+                document.getElementById("tableSectionBlock").style.top = table.top;
+                document.getElementById("tableSectionBlock").style.left = table.left;
+            }
+        }
+    }
+
+    function applyTableWidth() {
+        const table = document.getElementById("myTable");
+        if (table && window.dbSettings.tableWidth) {
+            table.style.width = window.dbSettings.tableWidth;
+        }
+    }
+
+    function changeTableWidth() {
+        if (!checkAuth()) return alert("Xato parol!");
+        let currentWidth = window.dbSettings.tableWidth || "100%";
+        let newWidth = prompt("Jadval kengligini kiriting:", currentWidth);
+        if (newWidth && newWidth.trim() !== "") {
+            window.dbSettings.tableWidth = newWidth;
+            applyTableWidth();
+            window.saveSettingsToFirebase();
+        }
+    }
+
+    function resetPositions() {
+        if (!checkAuth()) return alert("Kod xato!");
+        window.dbSettings.positions = {
+            adminMenuBlock: { top: "20px", left: "20px" },
+            tableSectionBlock: { top: "20px", left: "500px" }
+        };
+        window.dbSettings.tableWidth = "100%";
+        window.dbSettings.globalZoom = 1;
+        localCurrentZoom = 1;
+        applySavedPositions();
+        applyTableWidth();
+        applyGlobalZoom();
+        window.saveSettingsToFirebase();
+        alert("Barcha joylashuvlar va o'lchamlar boshlang'ich holatga qaytarildi!");
+    }
+
+    function makeElementDraggable(elmnt, handle) {
+        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+        handle.onmousedown = dragStart;
+        handle.ontouchstart = dragStart;
+
+        function dragStart(e) {
+            if (!checkAuth()) {
+                alert("Bloklarni surish uchun admin parolini kiriting!");
+                return;
+            }
+            e = e || window.event;
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            pos3 = clientX;
+            pos4 = clientY;
+            document.onmouseup = dragEnd;
+            document.ontouchend = dragEnd;
+            document.onmousemove = dragMove;
+            document.ontouchmove = dragMove;
+        }
+
+        function dragMove(e) {
+            e = e || window.event;
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            if (!clientX || !clientY) return;
+            pos1 = pos3 - clientX;
+            pos2 = pos4 - clientY;
+            pos3 = clientX;
+            pos4 = clientY;
+            elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
+            elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
+        }
+
+        function dragEnd() {
+            document.onmouseup = null;
+            document.onmousemove = null;
+            document.ontouchend = null;
+            document.ontouchmove = null;
+            if (!window.dbSettings.positions) window.dbSettings.positions = {};
+            window.dbSettings.positions[elmnt.id] = {
+                top: elmnt.style.top,
+                left: elmnt.style.left
+            };
+            window.saveSettingsToFirebase();
+        }
+    }
+
+    makeElementDraggable(document.getElementById("adminMenuBlock"), document.getElementById("adminHandle"));
+    makeElementDraggable(document.getElementById("tableSectionBlock"), document.getElementById("tableHandle"));
+
+    function toggleMenuCollapse() {
+        if (!checkAuth()) return alert("Parolni kiriting!");
+        const controls = document.getElementById("menuControls");
+        const btn = document.getElementById("hideMenuBtn");
+        if(controls.style.display !== "none") {
+            controls.style.display = "none";
+            btn.innerText = "Ochish";
+            btn.style.background = "#27ae60";
+        } else {
+            controls.style.display = "block";
+            btn.innerText = "Berkitish";
+            btn.style.background = "#e67e22";
+        }
+    }
+
+    function toggleSettingsPanel() {
+        if (!checkAuth()) return alert("Xato parol!");
+        const panel = document.getElementById("settingsPanel");
+        document.getElementById("chkCoords").checked = window.dbSettings.showCoords;
+        document.getElementById("chkHighlight").checked = window.dbSettings.highlightCell;
+        
+        for(let key in window.dbSettings.menuVisibility) {
+            let chk = document.getElementById("chk-" + key);
+            if(chk) chk.checked = window.dbSettings.menuVisibility[key];
+        }
+        panel.style.display = panel.style.display === "block" ? "none" : "block";
+    }
+
+    function changeAdminPassword() {
+        if (!checkAuth()) return;
+        let newPass = prompt("Yangi admin parolini kiriting:");
+        if (newPass && newPass.trim() !== "") {
+            window.dbSettings.password = newPass;
+            window.saveSettingsToFirebase();
+            alert("Parol o'zgartirildi!");
+        }
+    }
+
+    function settingToggleCoords(value) {
+        window.dbSettings.showCoords = value;
+        window.saveSettingsToFirebase();
+        if(!value) document.getElementById("coordsIndicator").innerText = "Koordinatalar o'chirilgan";
+    }
+
+    function settingToggleHighlight(value) {
+        window.dbSettings.highlightCell = value;
+        window.saveSettingsToFirebase();
+        applyTableHighlight();
+    }
+
+    function applyTableHighlight() {
+        const table = document.getElementById("myTable");
+        if(table) {
+            if (window.dbSettings.highlightCell) table.classList.add("enable-highlight");
+            else table.classList.remove("enable-highlight");
+        }
+    }
+
+    function settingToggleMenu(key, value) {
+        if (!window.dbSettings.menuVisibility) window.dbSettings.menuVisibility = {};
+        window.dbSettings.menuVisibility[key] = value;
+        window.saveSettingsToFirebase();
+        applyMenuVisibility();
+    }
+
+    function applyMenuVisibility() {
+        const vis = window.dbSettings.menuVisibility || {};
+        for(let key in vis) {
+            let elAdmin = document.getElementById("btn-" + key) || document.getElementById("group-" + key);
+            if(elAdmin) elAdmin.style.display = "inline-block";
+            
+            let elPublic = document.getElementById("public-" + key);
+            if(elPublic) {
+                if(vis[key]) elPublic.style.display = "inline-block";
+                else elPublic.style.display = "none";
+            }
+        }
+    }
+
+    document.getElementById("myTable").addEventListener("mouseover", function(e) {
+        if(!window.dbSettings.showCoords) return;
+        let cell = e.target;
+        if(cell.tagName === "TD" || cell.tagName === "TH") {
+            let kolIndex = cell.cellIndex + 1;
+            let qatorIndex = cell.parentNode.rowIndex + 1;
+            document.getElementById("coordsIndicator").innerText = `Tanlangan joy -> Qator: ${qatorIndex}, Ustun: ${kolIndex}`;
+        }
+    });
+
+    document.getElementById("myTable").addEventListener("mouseleave", function() {
+        if(!window.dbSettings.showCoords) return;
+        document.getElementById("coordsIndicator").innerText = "Kursor katak ustida emas";
+    });
+
+    function rgbToHex(rgb) {
+        if (!rgb || rgb === 'rgba(0, 0, 0, 0)' || rgb === 'transparent') return '#ffffff';
+        if (rgb.startsWith('#')) return rgb;
+        let rgbValues = rgb.match(/\d+/g);
+        if (!rgbValues) return '#ffffff';
+        return "#" + ((1 << 24) + (parseInt(rgbValues[0]) << 16) + (parseInt(rgbValues[1]) << 8) + parseInt(rgbValues[2])).toString(16).slice(1);
+    }
+
+    function openCustomPicker(type, currentValue, currentBgColor, isAnnouncement, callback) {
+        let overlay = document.createElement('div');
+        overlay.className = 'picker-overlay';
+        
+        let box = document.createElement('div');
+        box.className = 'picker-box';
+        
+        let title = document.createElement('h4');
+        title.style.margin = "0 0 10px 0";
+        
+        if (isAnnouncement) {
+            title.innerText = "E'lon ko'rinish vaqtini tanlang";
+        } else {
+            title.innerText = type === 'date' ? "Sanani tanlang" : (type === 'time' ? "Vaqtni tanlang (Soat:Minut:Sekund)" : "Matnni kiriting");
+        }
+        
+        let input = document.createElement('input');
+        if (isAnnouncement || type === 'time') {
+            input.type = 'time';
+            input.step = "1";
+        } else if (type === 'date') {
+            input.type = 'date';
+        } else {
+            input.type = 'text';
+        }
+        input.value = currentValue;
+        
+        let colorSection = document.createElement('div');
+        colorSection.className = 'color-section';
+        if (!isAnnouncement) {
+            colorSection.innerHTML = `<label>Katak orqa fon rangi:</label>`;
+            let colorInput = document.createElement('input');
+            colorInput.type = 'color';
+            colorInput.value = rgbToHex(currentBgColor);
+            colorInput.style.width = '80px'; colorInput.style.height = '30px'; colorInput.style.cursor = 'pointer';
+            colorSection.appendChild(colorInput);
+            box.appendChild(title);
+            box.appendChild(input);
+            box.appendChild(colorSection);
+        } else {
+            box.appendChild(title);
+            box.appendChild(input);
+        }
+
+        let btnBlock = document.createElement('div');
+        btnBlock.style.marginTop = "10px";
+        
+        let okBtn = document.createElement('button');
+        okBtn.innerText = "OK";
+        okBtn.style.background = "#27ae60";
+        okBtn.onclick = function() {
+            let selectedColor = isAnnouncement ? null : box.querySelector('input[type="color"]').value;
+            callback(input.value, selectedColor);
+            document.body.removeChild(overlay);
+        };
+        
+        let cancelBtn = document.createElement('button');
+        cancelBtn.innerText = "Bekor qilish";
+        cancelBtn.style.background = "#c0392b";
+        cancelBtn.onclick = function() {
+            document.body.removeChild(overlay);
+        };
+        
+        btnBlock.appendChild(okBtn);
+        btnBlock.appendChild(cancelBtn);
+        box.appendChild(btnBlock);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+    }
+
+    let isEditMode = false;
+    function editCell() {
+        if (!(window.dbSettings.menuVisibility['editBtn'] || checkAuth())) return alert("Ruxsat berilmagan!");
+        if (!isEditMode) {
+            isEditMode = true;
+            alert("Tahrirlash rejimi faol! Kataklarni bosing.");
+            
+            document.getElementById("myTable").onclick = function(event) {
+                let cell = event.target;
+                if (!isEditMode || cell.style.cursor === 'col-resize' || cell.style.cursor === 'row-resize') return;
+
+                if (cell.tagName === "TH") {
+                    let currentType = cell.getAttribute("data-type") || "text";
+                    let newTypeChoice = prompt(`Ustun turini tanlang:\n1 - Matn\n2 - Sana\n3 - Vaqt`, currentType === "text"?"1":(currentType==="date"?"2":"3"));
+                    if (newTypeChoice === "1") cell.setAttribute("data-type", "text");
+                    else if (newTypeChoice === "2") cell.setAttribute("data-type", "date");
+                    else if (newTypeChoice === "3") cell.setAttribute("data-type", "time");
+                    
+                    let textInput = prompt("Ustun nomi:", cell.innerText);
+                    if (textInput) cell.innerText = textInput;
+                    window.updateTableDataInFirebase();
+                    return;
+                }
+
+                if (cell.tagName === "TD") {
+                    let colIndex = cell.cellIndex;
+                    let headerCell = document.getElementById("myTable").rows[0].cells[colIndex];
+                    let colType = headerCell ? (headerCell.getAttribute("data-type") || "text") : "text";
+                    let currentVal = cell.innerText.trim();
+                    let currentBg = window.getComputedStyle(cell).backgroundColor;
+
+                    openCustomPicker(colType, currentVal, currentBg, false, function(newValue, newColor) {
+                        if (newValue !== null) cell.innerText = newValue;
+                        if (newColor) cell.style.backgroundColor = newColor;
+                        window.updateTableDataInFirebase();
+                    });
+                }
+            };
+        } else {
+            isEditMode = false;
+            alert("Tahrirlash rejimi yopildi.");
+            document.getElementById("myTable").onclick = null;
+        }
+    }
+
+    function postAnnouncement() {
+        if (!(window.dbSettings.menuVisibility['announceBtn'] || checkAuth())) return alert("Ruxsat berilmagan!");
+        const text = prompt("E'lon matnini kiriting:");
+        if (!text) return;
+
+        openCustomPicker('time', '00:05:00', null, true, function(timeStr) {
+            if (!timeStr) return;
+            const parts = timeStr.split(':');
+            if (parts.length === 2) parts.push("00"); 
+            
+            const totalSec = (parseInt(parts[0])||0)*3600 + (parseInt(parts[1])||0)*60 + (parseInt(parts[2])||0);
+            if (totalSec <= 0) return alert("Vaqt noto'g'ri!");
+            
+            window.firebaseAddAnnouncement('ann_' + Date.now(), text, totalSec);
+            alert("E'lon muvaffaqiyatli yuborildi!");
+        });
+    }
+
+    let activeTimers = {};
+    function renderAnnouncements(data) {
+        const adminItemsBlock = document.getElementById("adminAnnounceItems");
+        adminItemsBlock.innerHTML = "";
+        for (let tId in activeTimers) clearInterval(activeTimers[tId]);
+        activeTimers = {};
+        let hasData = false;
+
+        for (let id in data) {
+            const announce = data[id];
+            const timeLeft = announce.expiresAt - Date.now();
+
+            if (timeLeft > 0) {
+                hasData = true;
+                const divAdmin = document.createElement("div");
+                divAdmin.className = "admin-announcement-item";
+                divAdmin.innerHTML = `
+                    <div><b>Matn:</b> <span id="adm_txt_${id}">${announce.text}</span></div>
+                    <div style="color:#2ecc71; font-weight:bold;">Qolgan vaqt: <span id="adm_tm_${id}">--:--:--</span></div>
+                    <div>
+                        <button onclick="adminEditAnnText('${id}')" style="background:#f39c12; padding:4px 8px; font-size:11px;">Tahrirlash</button>
+                        <button onclick="adminEditAnnTime('${id}')" style="background:#3498db; padding:4px 8px; font-size:11px;">Vaqt (HH:MM:SS)</button>
+                        <button onclick="window.firebaseDeleteAnnouncement('${id}')" style="background:#e74c3c; padding:4px 8px; font-size:11px;">O'chirish</button>
+                    </div>
+                `;
+                adminItemsBlock.appendChild(divAdmin);
+
+                function updateTimer() {
+                    const rem = announce.expiresAt - Date.now();
+                    if(rem <= 0) { window.firebaseDeleteAnnouncement(id); return; }
+                    const totSec = Math.floor(rem / 1000);
+                    const h = Math.floor(totSec / 3600).toString().padStart(2, '0');
+                    const m = Math.floor((totSec % 3600) / 60).toString().padStart(2, '0');
+                    const s = (totSec % 60).toString().padStart(2, '0');
+                    const span = document.getElementById(`adm_tm_${id}`);
+                    if(span) span.innerText = `${h}:${m}:${s}`;
+                }
+                updateTimer();
+                activeTimers[id] = setInterval(updateTimer, 1000);
+            } else {
+                window.firebaseDeleteAnnouncement(id);
+            }
+        }
+        if(!hasData) adminItemsBlock.innerHTML = "<i>Hozircha faol e'lonlar yo'q</i>";
+    }
+
+    function renderPublicAnnouncements(data) {
+        const bar = document.getElementById("publicAnnouncementBar");
+        const marquee = document.getElementById("publicAnnounceMarquee");
+        let textList = [];
+        for (let id in data) {
+            if (data[id].expiresAt - Date.now() > 0) textList.push(data[id].text);
+        }
+        if (textList.length > 0) {
+            bar.style.display = "block";
+            marquee.innerText = textList.join(" | ⚠️ | ");
+        } else {
+            bar.style.display = "none";
+        }
+    }
+
+    window.adminEditAnnText = function(id) {
+        if(!checkAuth()) return alert("Parol xato!");
+        const current = document.getElementById(`adm_txt_${id}`).innerText;
+        const txt = prompt("Yangi e'lon matni:", current);
+        if(txt) {
+            get(ref(db, `announcements/${id}`)).then(snap => {
+                window.firebaseUpdateAnnouncement(id, txt, snap.val().expiresAt);
+            });
+        }
+    };
+
+    window.adminEditAnnTime = function(id) {
+        if(!checkAuth()) return alert("Parol xato!");
+        openCustomPicker('time', '00:05:00', null, true, function(timeStr) {
+            if(!timeStr) return;
+            const parts = timeStr.split(':');
+            if (parts.length === 2) parts.push("00");
+            const totalSec = (parseInt(parts[0])||0)*3600 + (parseInt(parts[1])||0)*60 + (parseInt(parts[2])||0);
+            
+            get(ref(db, `announcements/${id}`)).then(snap => {
+                window.firebaseUpdateAnnouncement(id, snap.val().text, Date.now() + (totalSec * 1000));
+                alert("Muddati yangilandi!");
+            });
+        });
+    };
+
+    function takeScreenshot() {
+        html2canvas(document.querySelector("#myTable")).then(canvas => {
+            let link = document.createElement('a');
+            link.download = 'jadval_surati.png';
+            link.href = canvas.toDataURL("image/png");
+            link.click();
+        });
+    }
+
+    function exportExcel() {
+        let html = document.getElementById("myTable").outerHTML;
+        let blob = new Blob(['\ufeff', html], { type: 'application/vnd.ms-excel' });
+        let a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'jadval.xls';
+        a.click();
+    }
+
+    function clearCell() {
+        if (!(window.dbSettings.menuVisibility['clearBtn'] || checkAuth())) return alert("Ruxsat berilmagan!");
+        let cell = prompt("Katak koordinatasi (Masalan: 1,0):");
+        if(cell) {
+            let coords = cell.split(',');
+            if(coords.length === 2) {
+                let r = document.getElementById("myTable").rows[coords[0]];
+                if(r && r.cells[coords[1]]) {
+                    r.cells[coords[1]].innerText = "";
+                    r.cells[coords[1]].style.backgroundColor = "white";
+                    window.updateTableDataInFirebase();
+                }
+            }
+        }
+    }
+
+    function allowDrop(ev) { ev.preventDefault(); }
+    function drag(ev) { ev.dataTransfer.setData("text", ev.target.innerText); ev.target.id = "dragging"; }
+    function drop(ev) { ev.preventDefault(); let data = ev.dataTransfer.getData("text"); let source = document.getElementById("dragging"); source.innerText = ev.target.innerText; ev.target.innerText = data; source.id = ""; window.updateTableDataInFirebase(); }
+    
+    function initCell(cell) {
+        cell.innerText = ""; cell.style.backgroundColor = "white"; cell.draggable = true;
+        cell.ondragstart = drag; cell.ondrop = drop; cell.ondragover = allowDrop;
+    }
+
+    function addRow() { 
+        if (window.dbSettings.menuVisibility['rowBtn'] || checkAuth()) {
+            let table = document.getElementById("myTable"); let row = table.insertRow(); 
+            for(let i=0; i<table.rows[0].cells.length; i++) initCell(row.insertCell(i));
+            window.updateTableDataInFirebase();
+        } else alert("Ruxsat berilmagan!");
+    }
+    
+    function addCol() { 
+        if (window.dbSettings.menuVisibility['colBtn'] || checkAuth()) {
+            let table = document.getElementById("myTable"); let newTh = document.createElement('th');
+            newTh.style.width = "150px"; newTh.setAttribute("data-type", "text"); newTh.innerText = "Yangi Ustun";
+            table.rows[0].appendChild(newTh);
+            for(let i=1; i<table.rows.length; i++) initCell(table.rows[i].insertCell(-1));
+            window.updateTableDataInFirebase();
+        } else alert("Ruxsat berilmagan!");
+    }
+    
+    function delRow() { 
+        if (window.dbSettings.menuVisibility['rowBtn'] || checkAuth()) {
+            document.getElementById("myTable").deleteRow(-1); window.updateTableDataInFirebase();
+        } else alert("Ruxsat berilmagan!");
+    }
+
+    function delCol() { 
+        if (window.dbSettings.menuVisibility['colBtn'] || checkAuth()) {
+            let table = document.getElementById("myTable"); 
+            for(let i=0; i<table.rows.length; i++) table.rows[i].deleteCell(-1); 
+            window.updateTableDataInFirebase();
+        } else alert("Ruxsat berilmagan!");
+    }
+
+    initResizeEvents();
+</script>
+</body>
+</html>
